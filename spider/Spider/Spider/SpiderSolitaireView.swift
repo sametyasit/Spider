@@ -12,7 +12,7 @@ class SpiderSolitaireView: UIView {
     // MARK: - Properties
     
     // UI elements
-    private var stacks: [CardStack] = []
+    internal var stacks: [CardStack] = []
     private var stockPile: UIView!
     private var completedSets: UIView!
     private var toolbar: UIToolbar!
@@ -25,7 +25,7 @@ class SpiderSolitaireView: UIView {
     private var score: Int = 500 // Starting score
     private var seed: Int? // For deterministic deals (challenges)
     private var isChallenge: Bool = false
-    private var currentChallenge: DailyChallenge?
+    private var currentChallenge: GameConfig.DailyChallenge?
     
     // Drag and drop
     private var draggingCard: Card?
@@ -53,6 +53,9 @@ class SpiderSolitaireView: UIView {
         let didRevealCard: Bool
     }
     private var moveHistory: [GameMove] = []
+    
+    // labelSpacing değişkenini let olarak tanımlama
+    private let labelSpacing: CGFloat = 20
     
     // MARK: - Initialization
     
@@ -95,7 +98,7 @@ class SpiderSolitaireView: UIView {
             startNewGame()
         } else {
             // Check for saved game
-            if GameManager.shared.hasSavedGame() {
+            if GameConfig.GameManager.shared.hasSavedGame() {
                 showContinueGamePrompt()
             } else {
                 // Start a new game immediately
@@ -190,12 +193,10 @@ class SpiderSolitaireView: UIView {
         // Position labels at the top
         let topPadding: CGFloat = 40
         let labelHeight: CGFloat = 30
-        let labelSpacing: CGFloat = 20
-        let totalWidth = bounds.width - 80
         
         // Layout labels horizontally
         for (index, label) in statusLabels.enumerated() {
-            let labelWidth = totalWidth / CGFloat(statusLabels.count)
+            let labelWidth = bounds.width / CGFloat(statusLabels.count)
             label.frame = CGRect(
                 x: 40 + CGFloat(index) * labelWidth,
                 y: topPadding,
@@ -331,166 +332,153 @@ class SpiderSolitaireView: UIView {
         stacks.forEach { $0.removeFromSuperview() }
         stacks.removeAll()
         
-        print("Kart yığınları kuruluyor...")
+        // Profesyonel oyunlardaki gibi tek sıra düzenleme
+        let screenWidth = bounds.width
+        let screenHeight = bounds.height
         
-        // Calculate layout for portrait mode
-        let stackWidth = GameConfig.cardWidth
-        let stacksPerRow = 5 // Display 5 stacks per row
-        let stackSpacing = GameConfig.stackSpacing
+        // Kart boyutlarını ekrana göre hesapla - genişlik ekranın %9'u kadar
+        let cardWidth = min(screenWidth * 0.09, GameConfig.cardWidth)
         
-        // Calculate the total width of stacks in a row
-        let totalRowWidth = CGFloat(stacksPerRow) * stackWidth + CGFloat(stacksPerRow - 1) * stackSpacing
-        let startX = (bounds.width - totalRowWidth) / 2
-        let startY = toolbar.frame.maxY + 40 // Daha yüksek başlangıç noktası
+        // Tek sırada 10 yığın için hesaplama
+        let totalStacks = 10
         
-        print("Ekran boyutları: \(bounds.width) x \(bounds.height)")
-        print("Yığın başlangıç pozisyonu: (\(startX), \(startY))")
+        // Kenar boşlukları
+        let sideMargin: CGFloat = 10.0
         
-        // Create new stacks in 2 rows
-        for i in 0..<GameConfig.numberOfStacks {
-            let row = i / stacksPerRow
-            let col = i % stacksPerRow
+        // Kullanılabilir genişlik
+        let availableWidth = screenWidth - (sideMargin * 2)
+        
+        // Yığınlar arası boşluk hesabı
+        let spacing = (availableWidth - (CGFloat(totalStacks) * cardWidth)) / CGFloat(totalStacks - 1)
+        
+        // Başlangıç Y konumu - üst kontrollere yer bırak
+        let startY = 80.0 
+        
+        // 10 yığını tek sırada oluştur
+        for i in 0..<totalStacks {
+            let x = sideMargin + CGFloat(i) * (cardWidth + spacing)
             
-            let x = startX + CGFloat(col) * (stackWidth + stackSpacing)
-            let y = startY + CGFloat(row) * (GameConfig.cardHeight + GameConfig.verticalMargin)
+            // Yığın yüksekliğini ekranın %70'i olarak ayarla
+            let stackHeight = screenHeight * 0.7
             
-            let stackFrame = CGRect(x: x, y: y, width: stackWidth, height: GameConfig.cardHeight)
+            let stackFrame = CGRect(x: x, y: startY, width: cardWidth, height: stackHeight)
+            
             let stack = CardStack(stackIndex: i, frame: stackFrame)
-            stack.layer.borderWidth = 1
-            stack.layer.borderColor = UIColor.white.withAlphaComponent(0.3).cgColor
-            stack.layer.cornerRadius = 8
             
-            print("Yığın #\(i) oluşturuldu, pozisyon: \(stackFrame)")
+            // Profesyonel görünüm için yığın belirteçleri
+            stack.backgroundColor = UIColor.clear
+            stack.layer.cornerRadius = 8
+            stack.layer.borderWidth = 0.5
+            stack.layer.borderColor = UIColor.white.withAlphaComponent(0.3).cgColor
             
             stacks.append(stack)
             addSubview(stack)
+            
+            // Her yığın için indeks etiketi ekleme (opsiyonel)
+            let indexLabel = UILabel(frame: CGRect(x: 0, y: -20, width: cardWidth, height: 20))
+            indexLabel.text = "\(i+1)"
+            indexLabel.textColor = UIColor.white.withAlphaComponent(0.5)
+            indexLabel.textAlignment = .center
+            indexLabel.font = UIFont.systemFont(ofSize: 12)
+            stack.addSubview(indexLabel)
         }
-        
-        print("Toplam \(stacks.count) yığın kuruldu")
     }
     
-    private func setupStockPile() {
-        // Remove existing stock pile if any
-        stockPile?.removeFromSuperview()
-        
-        // Create new stock pile at the bottom left
-        let margin = GameConfig.horizontalMargin
-        let width = GameConfig.cardWidth
-        let height = GameConfig.cardHeight
-        let y = bounds.height - height - margin
-        
-        stockPile = UIView(frame: CGRect(x: margin, y: y, width: width, height: height))
-        stockPile.backgroundColor = UIColor(white: 0, alpha: 0.2)
-        stockPile.layer.borderWidth = 2.0
-        stockPile.layer.borderColor = UIColor.white.withAlphaComponent(0.5).cgColor
-        stockPile.layer.cornerRadius = 12.0
-        
-        // Add visual indicator for stock pile
-        let indicatorLabel = UILabel(frame: CGRect(x: 0, y: 0, width: width, height: height))
-        indicatorLabel.text = "🔄"
-        indicatorLabel.font = UIFont.systemFont(ofSize: 24)
-        indicatorLabel.textAlignment = .center
-        indicatorLabel.alpha = 0.7
-        stockPile.addSubview(indicatorLabel)
-        
-        // Add tap gesture recognizer
-        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(stockPileTapped))
-        stockPile.addGestureRecognizer(tapGesture)
-        
-        // Add shadow for depth
-        stockPile.layer.shadowColor = UIColor.black.cgColor
-        stockPile.layer.shadowOffset = CGSize(width: 0, height: 3)
-        stockPile.layer.shadowRadius = 5
-        stockPile.layer.shadowOpacity = 0.3
-        stockPile.layer.masksToBounds = false
-        
-        addSubview(stockPile)
-    }
-    
-    private func setupCompletedArea() {
-        // Remove existing completed area if any
-        completedSets?.removeFromSuperview()
-        
-        // Create new completed sets area at the bottom right
-        let margin = GameConfig.horizontalMargin
-        let width = GameConfig.cardWidth * 2 + GameConfig.stackSpacing // Space for 2 completed stacks per row
-        let height = GameConfig.cardHeight * 2 + GameConfig.verticalMargin // 2 rows for completed stacks
-        let x = bounds.width - width - margin
-        let y = bounds.height - height - margin
-        
-        completedSets = UIView(frame: CGRect(x: x, y: y, width: width, height: height))
-        completedSets.backgroundColor = UIColor(white: 0, alpha: 0.1)
-        completedSets.layer.cornerRadius = 12.0
-        
-        // Add a label to indicate completed sets area
-        let completedLabel = UILabel(frame: CGRect(x: 0, y: 0, width: width, height: 24))
-        completedLabel.text = "Tamamlanan Seriler"
-        completedLabel.font = UIFont.systemFont(ofSize: 12, weight: .medium)
-        completedLabel.textColor = UIColor.white.withAlphaComponent(0.8)
-        completedLabel.textAlignment = .center
-        completedSets.addSubview(completedLabel)
-        
-        addSubview(completedSets)
-    }
-    
-    private func setupGestureRecognizers() {
-        // Add pan gesture recognizer for card dragging
-        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
-        addGestureRecognizer(panGesture)
-    }
-    
-    // MARK: - Game Logic
-    
-    func startNewGame() {
-        // Reset game state
-        resetGame()
-        
-        print("Yeni oyun başlatılıyor...")
-        
-        // Create and shuffle a deck based on difficulty
+    private func dealInitialCards() {
+        // Önce desteyi oluştur ve karıştır
         createDeck()
         
-        print("Deste oluşturuldu, \(deck.count) kart var")
+        print("Kartlar dağıtılıyor. Deste boyutu: \(deck.count)")
         
-        // Deal initial cards
-        dealInitialCards()
+        // Tüm yığınlara sırayla kartları dağıt
+        for columnIndex in 0..<stacks.count {
+            let cardsInColumn = (columnIndex < 4) ? 6 : 5
+            
+            for rowIndex in 0..<cardsInColumn {
+                guard let card = deck.popLast() else {
+                    print("Hata: Yeterli kart yok")
+                    continue
+                }
+                
+                // Sadece en üstteki kartı aç
+                card.isRevealed = (rowIndex == cardsInColumn - 1)
+                
+                // Kartı ekle
+                stacks[columnIndex].addSubview(card)
+                
+                // Pozisyonu ayarla
+                let yOffset = CGFloat(rowIndex) * GameConfig.cardOverlap
+                card.frame = CGRect(
+                    x: 0, 
+                    y: yOffset, 
+                    width: min(stacks[columnIndex].frame.width, GameConfig.cardWidth), 
+                    height: GameConfig.cardHeight
+                )
+                
+                // Yığının kartlar dizisine ekle
+                stacks[columnIndex].cards.append(card)
+                
+                // Her kart eklendiğinde kısa bir gecikme (animasyon etkisi)
+                if rowIndex == cardsInColumn - 1 {
+                    // Son kart için animasyon
+                    card.alpha = 0
+                    UIView.animate(withDuration: 0.2) {
+                        card.alpha = 1.0
+                    }
+                }
+            }
+        }
         
-        // Start timer
-        startTimer()
+        // Kalan kartları stok kartları olarak ayarla
+        stockCards = deck
+        deck = []
+        
+        // Stok kartlarını güncelle
+        updateStockPileUI()
+        
+        // Tüm kartların görünür olduğundan emin ol
+        forceVisibility()
     }
     
-    private func resetGame() {
-        // Reset game variables
-        completedSetCount = 0
-        moves = 0
-        score = 500
-        elapsedTime = 0
-        
-        // Stop timer if running
-        gameTimer?.invalidate()
-        gameTimer = nil
-        
-        // Clear stacks
-        for stack in stacks {
-            for card in stack.cards {
-                card.removeFromSuperview()
+    // Tüm kartların görünürlüğünü sağla
+    private func forceVisibility() {
+        for (index, stack) in stacks.enumerated() {
+            print("Yığın #\(index): \(stack.cards.count) kart")
+            
+            for (cardIndex, card) in stack.cards.enumerated() {
+                let yOffset = CGFloat(cardIndex) * GameConfig.cardOverlap
+                
+                // Kart pozisyonunu zorla
+                card.frame = CGRect(
+                    x: 0,
+                    y: yOffset,
+                    width: GameConfig.cardWidth,
+                    height: GameConfig.cardHeight
+                )
+                
+                // Kartın görünür olduğundan emin ol
+                if card.superview != stack {
+                    stack.addSubview(card)
+                }
+                
+                // Önceliği ayarla (üstteki kartlar önde olsun)
+                stack.bringSubviewToFront(card)
             }
-            stack.cards.removeAll()
+            
+            // Yığını öne getir
+            bringSubviewToFront(stack)
+        }
+    }
+    
+    private func updateStockPileUI() {
+        // Stok kartlarını güncelle
+        if let countLabel = stockPile?.viewWithTag(100) as? UILabel {
+            countLabel.text = "\(stockCards.count) kart"
         }
         
-        // Clear stock pile
-        stockCards.removeAll()
-        for subview in stockPile.subviews {
-            subview.removeFromSuperview()
-        }
-        
-        // Clear completed sets
-        for subview in completedSets.subviews {
-            subview.removeFromSuperview()
-        }
-        
-        // Update UI
-        updateLabels()
+        // Eğer stok kartı kalmamışsa stok yığınını devre dışı bırak
+        stockPile?.alpha = stockCards.isEmpty ? 0.5 : 1.0
+        stockPile?.isUserInteractionEnabled = !stockCards.isEmpty
     }
     
     private func createDeck() {
@@ -522,131 +510,6 @@ class SpiderSolitaireView: UIView {
         
         // Shuffle the deck
         deck.shuffle()
-    }
-    
-    private func dealInitialCards() {
-        // Deal initial cards to the 10 tableaus
-        // 54 cards in total: 5 face-down cards + 1 face-up card for stacks 0-3
-        // 4 face-down cards + 1 face-up card for stacks 4-9
-        
-        print("Kartlar dağıtılıyor...")
-        
-        for stackIndex in 0..<GameConfig.numberOfStacks {
-            let cardsInStack = (stackIndex < 4) ? 6 : 5
-            
-            print("Yığın #\(stackIndex): \(cardsInStack) kart dağıtılıyor")
-            
-            for cardIndex in 0..<cardsInStack {
-                if let card = deck.popLast() {
-                    // Only the top card should be face up
-                    card.isRevealed = (cardIndex == cardsInStack - 1)
-                    
-                    // Add to appropriate stack
-                    card.frame = CGRect(x: 0, y: 0, width: GameConfig.cardWidth, height: GameConfig.cardHeight)
-                    stacks[stackIndex].addCard(card)
-                    print("Kart dağıtıldı: \(card.value) \(card.suit), isRevealed: \(card.isRevealed)")
-                } else {
-                    print("HATA: Dağıtılacak kart kalmadı!")
-                }
-            }
-        }
-        
-        // Remaining cards go to stock
-        stockCards = deck
-        deck = []
-        print("Stok kartları: \(stockCards.count) kart")
-        updateStockPileUI()
-        
-        // Kartların düzgün yerleştirildiğinden emin olalım
-        for (index, stack) in stacks.enumerated() {
-            print("Yığın #\(index): \(stack.cards.count) kart var")
-            stack.repositionCards()
-        }
-    }
-    
-    private func updateStockPileUI() {
-        // Clear existing cards
-        for subview in stockPile.subviews {
-            subview.removeFromSuperview()
-        }
-        
-        // If there are cards in stock, show stacked cards
-        if !stockCards.isEmpty {
-            // Calculate number of "stacks" to show (1 for each 10 cards)
-            let numberOfStacks = (stockCards.count + 9) / 10 // Round up division
-            
-            for i in 0..<numberOfStacks {
-                let cardBack = UIView(frame: CGRect(
-                    x: CGFloat(i) * 2.0,
-                    y: CGFloat(i) * 2.0,
-                    width: GameConfig.cardWidth,
-                    height: GameConfig.cardHeight
-                ))
-                cardBack.backgroundColor = .blue
-                cardBack.layer.cornerRadius = 8.0
-                
-                // Add card decoration
-                let innerView = UIView(frame: CGRect(
-                    x: 10, y: 10,
-                    width: cardBack.bounds.width - 20,
-                    height: cardBack.bounds.height - 20
-                ))
-                innerView.backgroundColor = .white
-                innerView.layer.cornerRadius = 5.0
-                cardBack.addSubview(innerView)
-                
-                // Add spider logo
-                let logo = UILabel(frame: innerView.bounds)
-                logo.text = "🕸️"
-                logo.textAlignment = .center
-                logo.font = UIFont.systemFont(ofSize: 30)
-                innerView.addSubview(logo)
-                
-                stockPile.addSubview(cardBack)
-            }
-        }
-    }
-    
-    @objc private func stockPileTapped() {
-        // Check if there are cards left in stock
-        guard !stockCards.isEmpty else {
-            // Show alert when no more cards in stock
-            showAlert(title: "Kart Kalmadı", message: "Dağıtılacak başka kart kalmadı.")
-            return
-        }
-        
-        // Check if all stacks have at least one card
-        for stack in stacks {
-            if stack.cards.isEmpty {
-                showAlert(title: "Boş Sütun", message: "Yeni kartlar dağıtmak için tüm sütunlarda en az bir kart olmalıdır.")
-                return
-            }
-        }
-        
-        // Deal one card to each stack
-        dealMoreCards()
-        moves += 1
-        score -= 1 // Penalty for dealing more cards
-        updateLabels()
-    }
-    
-    private func dealMoreCards() {
-        // Deal one card to each stack, face up
-        for stackIndex in 0..<GameConfig.numberOfStacks {
-            if let card = stockCards.popLast() {
-                card.isRevealed = true // Cards from stock pile should be face up
-                stacks[stackIndex].addCard(card, animated: true)
-            }
-        }
-        
-        // Update stock pile UI
-        updateStockPileUI()
-        
-        // Provide haptic feedback
-        if GameConfig.hapticFeedbackEnabled {
-            let feedback = UIImpactFeedbackGenerator(style: .medium)
-            feedback.impactOccurred()
-        }
     }
     
     private func startTimer() {
@@ -699,42 +562,6 @@ class SpiderSolitaireView: UIView {
                 return
             }
         }
-    }
-    
-    private func addCompletedSet(_ cards: [Card]) {
-        // Add animation to show completed set
-        let startFrame = CGRect(
-            x: bounds.width / 2 - GameConfig.cardWidth / 2,
-            y: bounds.height / 2 - GameConfig.cardHeight / 2,
-            width: GameConfig.cardWidth,
-            height: GameConfig.cardHeight
-        )
-        
-        // Calculate position in completed area for portrait mode
-        // We'll use a 2x4 grid for completed sets
-        let setIndex = completedSetCount
-        let row = setIndex / 2
-        let col = setIndex % 2
-        
-        let setFrame = CGRect(
-            x: CGFloat(col) * (GameConfig.cardWidth + GameConfig.stackSpacing),
-            y: CGFloat(row) * (GameConfig.cardHeight + GameConfig.verticalMargin),
-            width: GameConfig.cardWidth,
-            height: GameConfig.cardHeight
-        )
-        
-        // Create a card to represent the completed set
-        let kingCard = cards.first! // The king card (top of set)
-        let completedCard = Card(value: kingCard.value, suit: kingCard.suit, faceUp: true)
-        completedCard.frame = startFrame
-        completedCard.alpha = 0
-        completedSets.addSubview(completedCard)
-        
-        // Animate the card to the completed area
-        UIView.animate(withDuration: 0.5, animations: {
-            completedCard.frame = setFrame
-            completedCard.alpha = 1
-        })
     }
     
     private func gameWon() {
@@ -921,7 +748,7 @@ class SpiderSolitaireView: UIView {
     private func checkForSavedGame() {
         // Only check if we haven't initialized a game yet
         if stacks.isEmpty || stacks[0].cards.isEmpty {
-            if GameManager.shared.hasSavedGame() {
+            if GameConfig.GameManager.shared.hasSavedGame() {
                 showContinueGamePrompt()
             }
         }
@@ -993,7 +820,7 @@ class SpiderSolitaireView: UIView {
                     self.loadSavedGame()
                 } else {
                     // Start new game
-                    GameManager.shared.clearSavedGame()
+                    GameConfig.GameManager.shared.clearSavedGame()
                     self.startNewGame()
                 }
             })
@@ -1001,7 +828,7 @@ class SpiderSolitaireView: UIView {
     }
     
     private func loadSavedGame() {
-        guard let savedGame = GameManager.shared.loadSavedGame() else {
+        guard let savedGame = GameConfig.GameManager.shared.loadSavedGame() else {
             startNewGame()
             return
         }
@@ -1030,11 +857,15 @@ class SpiderSolitaireView: UIView {
         
         // Restore card stacks
         for stackIndex in 0..<savedGame.cards.count {
-            let stackState = savedGame.cards[stackIndex]
+            let stackCards = savedGame.cards[stackIndex]
             
-            for cardState in stackState {
-                let card = Card(value: cardState.value, suit: cardState.suit, faceUp: cardState.isRevealed)
-                card.isRevealed = cardState.isRevealed
+            for cardTuple in stackCards {
+                // Create card directly from tuple values
+                let card = Card(
+                    value: cardTuple.value,
+                    suit: cardTuple.suit,
+                    faceUp: cardTuple.isRevealed
+                )
                 stacks[stackIndex].addCard(card)
             }
         }
@@ -1048,7 +879,7 @@ class SpiderSolitaireView: UIView {
     }
     
     private func saveCurrentGame() {
-        GameManager.shared.saveGame(
+        GameConfig.GameManager.shared.saveGame(
             score: score,
             moves: moves,
             elapsedTime: elapsedTime,
@@ -1061,7 +892,7 @@ class SpiderSolitaireView: UIView {
         )
     }
     
-    func startDailyChallenge(challenge: DailyChallenge) {
+    func startDailyChallenge(challenge: GameConfig.DailyChallenge) {
         // Set up a challenge game
         isChallenge = true
         currentChallenge = challenge
@@ -1074,8 +905,8 @@ class SpiderSolitaireView: UIView {
     
     private func showGameCompleteModal() {
         // Save statistics
-        let (gamesPlayed, gamesWon, bestScore, fastestTime) = GameManager.shared.loadStatistics()
-        GameManager.shared.saveStatistics(
+        let (gamesPlayed, gamesWon, bestScore, fastestTime) = GameConfig.GameManager.shared.loadStatistics()
+        GameConfig.GameManager.shared.saveStatistics(
             gamesPlayed: gamesPlayed,
             gamesWon: gamesWon + 1,
             bestScore: max(bestScore, score),
@@ -1088,7 +919,7 @@ class SpiderSolitaireView: UIView {
         }
         
         // Clear saved game
-        GameManager.shared.clearSavedGame()
+        GameConfig.GameManager.shared.clearSavedGame()
         
         let winView = UIView(frame: bounds)
         winView.backgroundColor = UIColor.black.withAlphaComponent(0.7)
@@ -1394,6 +1225,347 @@ class SpiderSolitaireView: UIView {
             if let card = subview as? Card {
                 card.updateTheme()
             }
+        }
+    }
+    
+    // Yeni metod: Tüm kartları zorla yeniden konumlandır
+    private func forcefullyRespositionAllCards() {
+        for stack in stacks {
+            stack.repositionCards()
+            bringSubviewToFront(stack)
+        }
+    }
+    
+    func startNewGame() {
+        // Oyun durumunu sıfırla
+        resetGame()
+        
+        // Oyun arayüzünü oluştur
+        setupInGameMenuBar()
+        setupStacks()
+        setupStockPile()
+        setupCompletedArea()
+        setupGestureRecognizers()
+        
+        // Kartları dağıt
+        dealInitialCards()
+        
+        // Zamanlayıcıyı başlat
+        startTimer()
+        
+        // Görünürlüğü zorla
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            self.forceVisibility()
+        }
+    }
+    
+    private func resetGame() {
+        // Reset game variables
+        completedSetCount = 0
+        moves = 0
+        score = 500
+        elapsedTime = 0
+        
+        // Stop timer if running
+        gameTimer?.invalidate()
+        gameTimer = nil
+        
+        // Clear stacks
+        for stack in stacks {
+            for card in stack.cards {
+                card.removeFromSuperview()
+            }
+            stack.cards.removeAll()
+        }
+        
+        // Clear stock pile
+        stockCards.removeAll()
+        if let stockPile = stockPile {
+            for subview in stockPile.subviews {
+                subview.removeFromSuperview()
+            }
+        }
+        
+        // Clear completed sets
+        if let completedSets = completedSets {
+            for subview in completedSets.subviews {
+                subview.removeFromSuperview()
+            }
+        }
+        
+        // Update UI
+        updateLabels()
+    }
+    
+    private func setupStockPile() {
+        // Remove existing stock pile if any
+        stockPile?.removeFromSuperview()
+        
+        // Stok kartları alt orta kısımda
+        let width = GameConfig.cardWidth
+        let height = GameConfig.cardHeight
+        
+        // Kartları ekranın altına ve ortaya yerleştir
+        let x = (bounds.width - width) / 2
+        let y = bounds.height - height - 20
+        
+        stockPile = UIView(frame: CGRect(x: x, y: y, width: width, height: height))
+        stockPile.backgroundColor = UIColor(white: 0.1, alpha: 0.3)
+        stockPile.layer.borderWidth = 1.0
+        stockPile.layer.borderColor = UIColor.white.withAlphaComponent(0.5).cgColor
+        stockPile.layer.cornerRadius = 10.0
+        
+        // Daha profesyonel görünüm için stok göstergesi
+        let stackIcon = UIImageView(frame: CGRect(x: width/2 - 15, y: height/2 - 15, width: 30, height: 30))
+        stackIcon.backgroundColor = UIColor.clear
+        stackIcon.tintColor = UIColor.white.withAlphaComponent(0.8)
+        stackIcon.contentMode = .scaleAspectFit
+        
+        // Metin etiketi
+        let stackLabel = UILabel(frame: CGRect(x: 0, y: 5, width: width, height: 20))
+        stackLabel.text = "DAĞIT"
+        stackLabel.textAlignment = .center
+        stackLabel.font = UIFont.boldSystemFont(ofSize: 12)
+        stackLabel.textColor = UIColor.white.withAlphaComponent(0.9)
+        stockPile.addSubview(stackLabel)
+        
+        // Kart sayacı
+        let countLabel = UILabel(frame: CGRect(x: 0, y: height - 25, width: width, height: 20))
+        countLabel.tag = 100 // Daha sonra güncelleyebilmek için tag
+        countLabel.text = "\(stockCards.count) kart"
+        countLabel.textAlignment = .center
+        countLabel.font = UIFont.systemFont(ofSize: 11)
+        countLabel.textColor = UIColor.white.withAlphaComponent(0.9)
+        stockPile.addSubview(countLabel)
+        
+        // Orta kısımdaki ikon
+        let iconLabel = UILabel(frame: CGRect(x: 0, y: 0, width: width, height: height))
+        iconLabel.text = "🔄"
+        iconLabel.font = UIFont.systemFont(ofSize: 24)
+        iconLabel.textAlignment = .center
+        stockPile.addSubview(iconLabel)
+        
+        // Add tap gesture recognizer
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(stockPileTapped))
+        stockPile.addGestureRecognizer(tapGesture)
+        
+        // Add shadow for depth
+        stockPile.layer.shadowColor = UIColor.black.cgColor
+        stockPile.layer.shadowOffset = CGSize(width: 0, height: 2)
+        stockPile.layer.shadowRadius = 3
+        stockPile.layer.shadowOpacity = 0.3
+        stockPile.layer.masksToBounds = false
+        
+        addSubview(stockPile)
+    }
+    
+    private func setupCompletedArea() {
+        // Remove existing completed area if any
+        completedSets?.removeFromSuperview()
+        
+        // Create new completed sets area at the bottom left
+        let width = GameConfig.cardWidth
+        let height = GameConfig.cardHeight
+        let x = 20.0
+        let y = bounds.height - height - 20
+        
+        completedSets = UIView(frame: CGRect(x: x, y: y, width: width, height: height))
+        completedSets.backgroundColor = UIColor(white: 0, alpha: 0.1)
+        completedSets.layer.cornerRadius = 10.0
+        
+        // Add a label to indicate completed sets area
+        let completedLabel = UILabel(frame: CGRect(x: 0, y: 0, width: width, height: 20))
+        completedLabel.text = "Tamamlanan"
+        completedLabel.font = UIFont.systemFont(ofSize: 12, weight: .medium)
+        completedLabel.textColor = UIColor.white.withAlphaComponent(0.8)
+        completedLabel.textAlignment = .center
+        completedSets.addSubview(completedLabel)
+        
+        addSubview(completedSets)
+    }
+    
+    private func setupGestureRecognizers() {
+        // Add pan gesture recognizer for card dragging
+        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        addGestureRecognizer(panGesture)
+    }
+    
+    @objc private func stockPileTapped() {
+        // Check if there are cards left in stock
+        guard !stockCards.isEmpty else {
+            // Show alert when no more cards in stock
+            showAlert(title: "Kart Kalmadı", message: "Dağıtılacak başka kart kalmadı.")
+            return
+        }
+        
+        // Check if all stacks have at least one card
+        for stack in stacks {
+            if stack.cards.isEmpty {
+                showAlert(title: "Boş Sütun", message: "Yeni kartlar dağıtmak için tüm sütunlarda en az bir kart olmalıdır.")
+                return
+            }
+        }
+        
+        // Deal one card to each stack
+        dealMoreCards()
+        moves += 1
+        score -= 1 // Penalty for dealing more cards
+        updateLabels()
+    }
+    
+    private func dealMoreCards() {
+        // Her yığına üstten bir kart dağıt - Techgrapple.com'daki oyunlarda olduğu gibi
+        
+        // Eğer stok kartları yeterli değilse uyarı göster
+        if stockCards.count < stacks.count {
+            showAlert(title: "Yetersiz Kart", message: "Stokta yeterli kart kalmadı!", primaryAction: "Tamam", secondaryAction: "", primaryHandler: {})
+            return
+        }
+        
+        // Dağıtma animasyonu için gecikme
+        var delay: TimeInterval = 0.0
+        
+        // Her yığına bir kart dağıt
+        for stackIndex in 0..<stacks.count {
+            if let card = stockCards.popLast() {
+                card.isRevealed = true // Stoktan gelen kartlar açık olacak
+                
+                // Kartı ekle
+                let stack = stacks[stackIndex]
+                
+                // Kartı önce stok yığını üzerinde başlat (animasyon için)
+                if let stockPile = stockPile {
+                    card.frame = stockPile.convert(stockPile.bounds, to: self)
+                    self.addSubview(card)
+                    
+                    // Hedef pozisyonu hesapla
+                    let yOffset = stack.cards.isEmpty ? 0 : CGFloat(stack.cards.count) * GameConfig.cardOverlap
+                    let targetFrame = stack.convert(CGRect(
+                        x: 0, 
+                        y: yOffset, 
+                        width: min(stack.frame.width, GameConfig.cardWidth), 
+                        height: GameConfig.cardHeight
+                    ), to: self)
+                    
+                    // Animasyonla kartı yerine gönder
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                        UIView.animate(withDuration: 0.2, animations: {
+                            card.frame = targetFrame
+                        }, completion: { _ in
+                            // Animasyon tamamlandıktan sonra kartı yığına aktar
+                            card.removeFromSuperview()
+                            card.frame = CGRect(
+                                x: 0, 
+                                y: yOffset, 
+                                width: min(stack.frame.width, GameConfig.cardWidth), 
+                                height: GameConfig.cardHeight
+                            )
+                            stack.addSubview(card)
+                            stack.cards.append(card)
+                            stack.bringSubviewToFront(card)
+                            
+                            // Haptic feedback
+                            if GameConfig.hapticFeedbackEnabled {
+                                let feedback = UIImpactFeedbackGenerator(style: .light)
+                                feedback.impactOccurred()
+                            }
+                        })
+                    }
+                    
+                    delay += 0.1 // Her kart için gecikmeyi artır
+                } else {
+                    // Animasyon yapılamıyorsa, direkt ekle
+                    let yOffset = stack.cards.isEmpty ? 0 : CGFloat(stack.cards.count) * GameConfig.cardOverlap
+                    card.frame = CGRect(
+                        x: 0, 
+                        y: yOffset, 
+                        width: min(stack.frame.width, GameConfig.cardWidth), 
+                        height: GameConfig.cardHeight
+                    )
+                    stack.addSubview(card)
+                    stack.cards.append(card)
+                    stack.bringSubviewToFront(card)
+                }
+            }
+        }
+        
+        // Son animasyon tamamlandıktan sonra stock pile UI'ını güncelle
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay + 0.2) {
+            self.updateStockPileUI()
+            
+            // Skorlama
+            self.moves += 1
+            self.score -= 1 // Penalty for dealing more cards
+            self.updateLabels()
+            
+            // Kartların görünürlüğünü zorla
+            self.forceVisibility()
+        }
+    }
+    
+    private func setupInGameMenuBar() {
+        // Üst menü barı
+        let menuHeight: CGFloat = 40
+        let menuBar = UIView(frame: CGRect(x: 0, y: 10, width: bounds.width, height: menuHeight))
+        menuBar.backgroundColor = UIColor.black.withAlphaComponent(0.3)
+        menuBar.layer.cornerRadius = 8
+        addSubview(menuBar)
+        
+        // Geri düğmesi
+        let backButton = UIButton(type: .system)
+        backButton.frame = CGRect(x: 10, y: 5, width: 30, height: 30)
+        backButton.setTitle("←", for: .normal)
+        backButton.tintColor = .white
+        backButton.titleLabel?.font = UIFont.systemFont(ofSize: 20, weight: .bold)
+        backButton.addTarget(self, action: #selector(showBackConfirmation), for: .touchUpInside)
+        menuBar.addSubview(backButton)
+        
+        // Yeni oyun düğmesi
+        let newGameButton = UIButton(type: .system)
+        newGameButton.frame = CGRect(x: menuBar.frame.width - 80, y: 5, width: 70, height: 30)
+        newGameButton.setTitle("Yeni", for: .normal)
+        newGameButton.tintColor = .white
+        newGameButton.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.6)
+        newGameButton.layer.cornerRadius = 5
+        newGameButton.addTarget(self, action: #selector(showNewGameConfirmation), for: .touchUpInside)
+        menuBar.addSubview(newGameButton)
+        
+        // İpucu düğmesi
+        let hintButton = UIButton(type: .system)
+        hintButton.frame = CGRect(x: menuBar.frame.width - 150, y: 5, width: 60, height: 30)
+        hintButton.setTitle("İpucu", for: .normal)
+        hintButton.tintColor = .white
+        hintButton.backgroundColor = UIColor.systemGreen.withAlphaComponent(0.6)
+        hintButton.layer.cornerRadius = 5
+        hintButton.addTarget(self, action: #selector(showHint), for: .touchUpInside)
+        menuBar.addSubview(hintButton)
+    }
+    
+    @objc private func showBackConfirmation() {
+        showAlert(title: "Oyundan Çık", message: "Oyundan çıkmak istediğinize emin misiniz? İlerlemeniz kaydedilecektir.", 
+                  primaryAction: "Çık", secondaryAction: "İptal", primaryHandler: { 
+            // Oyundan çıkma işlemi
+            if let viewController = self.findViewController() {
+                viewController.dismiss(animated: true, completion: nil)
+            }
+        })
+    }
+    
+    @objc private func showNewGameConfirmation() {
+        showAlert(title: "Yeni Oyun", message: "Yeni bir oyun başlatmak istediğinize emin misiniz? Mevcut ilerlemeniz kaybolacaktır.", 
+                  primaryAction: "Yeni Oyun", secondaryAction: "İptal", primaryHandler: { 
+            self.startNewGame()
+        })
+    }
+    
+    private func showAlert(title: String, message: String, primaryAction: String, secondaryAction: String, primaryHandler: @escaping () -> Void) {
+        if let viewController = findViewController() {
+            let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: secondaryAction, style: .cancel))
+            alert.addAction(UIAlertAction(title: primaryAction, style: .default) { _ in
+                primaryHandler()
+            })
+            viewController.present(alert, animated: true)
         }
     }
 } 
