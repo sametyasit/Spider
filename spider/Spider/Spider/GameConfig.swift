@@ -25,19 +25,21 @@ struct GameConfig {
     // Current difficulty level
     static var difficultyLevel: DifficultyLevel = .easy
     
-    // Card dimensions - smaller for portrait mode
-    static let cardWidth: CGFloat = 60.0
-    static let cardHeight: CGFloat = 85.0
-    static let cardOverlap: CGFloat = 20.0
+    // Card dimensions - adjusted for better visibility
+    static let cardWidth: CGFloat = 75.0
+    static let cardHeight: CGFloat = 110.0
+    static let cardOverlap: CGFloat = 28.0
     
     // Card margins
-    static let horizontalMargin: CGFloat = 10.0
-    static let verticalMargin: CGFloat = 10.0
-    static let stackSpacing: CGFloat = 5.0
+    static let horizontalMargin: CGFloat = 20.0
+    static let verticalMargin: CGFloat = 20.0
+    static let stackSpacing: CGFloat = 12.0
     
     // Animation speeds
     static let dealAnimationDuration: TimeInterval = 0.2
     static let moveAnimationDuration: TimeInterval = 0.3
+    static let flipAnimationDuration: TimeInterval = 0.3
+    static let completeAnimationDuration: TimeInterval = 0.5
     
     // Game specific
     static let numberOfStacks: Int = 10
@@ -53,4 +55,34 @@ struct GameConfig {
         "♦": .red,
         "♣": .black
     ]
+    
+    // Themes
+    static let themes: [String: (background: UIColor, cardBack: UIColor, pattern: String)] = [
+        "Klasik": (UIColor(red: 0.15, green: 0.5, blue: 0.2, alpha: 1.0), UIColor(red: 0.0, green: 0.3, blue: 0.7, alpha: 1.0), "🕸️"),
+        "Mavi": (UIColor(red: 0.0, green: 0.33, blue: 0.65, alpha: 1.0), UIColor(red: 0.0, green: 0.1, blue: 0.5, alpha: 1.0), "🌊"),
+        "Kırmızı": (UIColor(red: 0.7, green: 0.12, blue: 0.15, alpha: 1.0), UIColor(red: 0.5, green: 0.05, blue: 0.05, alpha: 1.0), "🔥"),
+        "Mor": (UIColor(red: 0.35, green: 0.1, blue: 0.5, alpha: 1.0), UIColor(red: 0.2, green: 0.0, blue: 0.35, alpha: 1.0), "🔮"),
+        "Siyah": (UIColor(red: 0.1, green: 0.1, blue: 0.12, alpha: 1.0), UIColor(red: 0.2, green: 0.2, blue: 0.25, alpha: 1.0), "⚫"),
+        "Altın": (UIColor(red: 0.65, green: 0.5, blue: 0.15, alpha: 1.0), UIColor(red: 0.7, green: 0.4, blue: 0.0, alpha: 1.0), "💰")
+    ]
+    
+    // Current theme
+    static var currentTheme: String = "Klasik"
+    
+    // Game features
+    static var showTimer: Bool = true
+    static var showMoves: Bool = true
+    static var showScore: Bool = true
+    static var soundEnabled: Bool = true
+    static var hapticFeedbackEnabled: Bool = true
+    static var autoCompleteEnabled: Bool = true
+    
+    // Daily challenges
+    static let dailyChallengeRewardPoints: Int = 100
+    
+    // Scoring
+    static let moveCardPoints: Int = 1
+    static let completeSequencePoints: Int = 100
+    static let gameCompletionBonus: Int = 500
+    static let timePenaltyPerMinute: Int = 5
 } 

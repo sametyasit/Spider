@@ -23,6 +23,9 @@ class SpiderSolitaireView: UIView {
     private var completedSetCount: Int = 0
     private var moves: Int = 0
     private var score: Int = 500 // Starting score
+    private var seed: Int? // For deterministic deals (challenges)
+    private var isChallenge: Bool = false
+    private var currentChallenge: DailyChallenge?
     
     // Drag and drop
     private var draggingCard: Card?
@@ -35,9 +38,21 @@ class SpiderSolitaireView: UIView {
     // Timer
     private var gameTimer: Timer?
     private var elapsedTime: TimeInterval = 0
+    
+    // Statistics and score labels
+    private var statusLabels: [UILabel] = []
     private var timerLabel: UILabel!
     private var scoreLabel: UILabel!
     private var movesLabel: UILabel!
+    
+    // Game history for undo
+    private struct GameMove {
+        let cards: [Card]
+        let sourceStack: Int
+        let destinationStack: Int
+        let didRevealCard: Bool
+    }
+    private var moveHistory: [GameMove] = []
     
     // MARK: - Initialization
     
@@ -63,71 +78,252 @@ class SpiderSolitaireView: UIView {
     // MARK: - Setup
     
     private func setupGame() {
-        backgroundColor = UIColor(red: 0.0, green: 0.5, blue: 0.0, alpha: 1.0) // Green background
+        backgroundColor = getThemeBackgroundColor()
         
         setupToolbar()
         setupStacks()
         setupStockPile()
         setupCompletedArea()
         setupGestureRecognizers()
+        
+        // Show welcome if first launch
+        if !UserDefaults.standard.bool(forKey: "hasLaunchedBefore") {
+            showWelcomeMessage()
+            UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
+            
+            // Start a new game after welcome
+            startNewGame()
+        } else {
+            // Check for saved game
+            if GameManager.shared.hasSavedGame() {
+                showContinueGamePrompt()
+            } else {
+                // Start a new game immediately
+                startNewGame()
+            }
+        }
+    }
+    
+    private func getThemeBackgroundColor() -> UIColor {
+        let theme = GameConfig.themes[GameConfig.currentTheme] ?? GameConfig.themes["Klasik"]!
+        return theme.background
+    }
+    
+    private func showWelcomeMessage() {
+        let welcomeView = UIView(frame: bounds)
+        welcomeView.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+        
+        let container = UIView(frame: CGRect(x: 50, y: bounds.height/2 - 150, width: bounds.width - 100, height: 300))
+        container.backgroundColor = UIColor.systemBackground
+        container.layer.cornerRadius = 16
+        welcomeView.addSubview(container)
+        
+        let titleLabel = UILabel(frame: CGRect(x: 20, y: 20, width: container.bounds.width - 40, height: 30))
+        titleLabel.text = "Spider Solitaire'e Hoş Geldiniz!"
+        titleLabel.font = UIFont.boldSystemFont(ofSize: 20)
+        titleLabel.textAlignment = .center
+        container.addSubview(titleLabel)
+        
+        let messageLabel = UILabel(frame: CGRect(x: 20, y: 60, width: container.bounds.width - 40, height: 180))
+        messageLabel.text = """
+            Spider Solitaire, Papaz'dan As'a doğru sıralayarak kartları düzenlediğiniz klasik bir solitaire oyunudur.
+            
+            • Aynı takımdan oluşan tam bir seri tamamlandığında, kartlar tahtadan kaldırılır.
+            • Farklı takımlardan kartlar da yerleştirilebilir, ancak tamamlanmış bir seri için aynı takımdan olmaları gerekir.
+            • Tüm kartları sıralamanız halinde oyunu kazanırsınız!
+            
+            Günlük meydan okumaları denemek veya zorluk seviyesini değiştirmek için sağ üstteki ayarlar düğmesine dokunun.
+            
+            İyi eğlenceler!
+        """
+        messageLabel.font = UIFont.systemFont(ofSize: 14)
+        messageLabel.numberOfLines = 0
+        container.addSubview(messageLabel)
+        
+        let okButton = UIButton(type: .system)
+        okButton.frame = CGRect(x: container.bounds.width/2 - 50, y: container.bounds.height - 50, width: 100, height: 40)
+        okButton.setTitle("Başla", for: .normal)
+        okButton.backgroundColor = UIColor.systemBlue
+        okButton.setTitleColor(.white, for: .normal)
+        okButton.layer.cornerRadius = 8
+        okButton.addTarget(self, action: #selector(dismissWelcome), for: .touchUpInside)
+        container.addSubview(okButton)
+        
+        addSubview(welcomeView)
+        
+        // Animate in
+        container.transform = CGAffineTransform(scaleX: 0.1, y: 0.1)
+        UIView.animate(withDuration: 0.3) {
+            container.transform = .identity
+        }
+    }
+    
+    @objc private func dismissWelcome(_ sender: UIButton) {
+        if let welcomeView = sender.superview?.superview {
+            UIView.animate(withDuration: 0.3, animations: {
+                welcomeView.alpha = 0
+            }, completion: { _ in
+                welcomeView.removeFromSuperview()
+            })
+        }
     }
     
     private func setupToolbar() {
-        // Remove existing toolbar if any
-        toolbar?.removeFromSuperview()
+        // Remove existing toolbar elements
+        for view in subviews where view is UIToolbar || view is UILabel {
+            view.removeFromSuperview()
+        }
+        statusLabels.removeAll()
         
-        // Create labels for game information
-        timerLabel = createLabel(withText: "Süre: 00:00")
-        scoreLabel = createLabel(withText: "Puan: 500")
-        movesLabel = createLabel(withText: "Hamle: 0")
-        
-        // Create toolbar items
-        let newGameButton = UIBarButtonItem(title: "Yeni Oyun", style: .plain, target: self, action: #selector(newGameTapped))
-        let undoButton = UIBarButtonItem(title: "Geri Al", style: .plain, target: self, action: #selector(undoTapped))
-        let hintButton = UIBarButtonItem(title: "İpucu", style: .plain, target: self, action: #selector(hintTapped))
-        
-        let flexSpace = UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil)
-        let timerItem = UIBarButtonItem(customView: timerLabel)
-        let scoreItem = UIBarButtonItem(customView: scoreLabel)
-        let movesItem = UIBarButtonItem(customView: movesLabel)
-        
-        // Setup difficulty selector
-        let segmentedControl = UISegmentedControl(items: ["1 Takım", "2 Takım", "4 Takım"])
-        segmentedControl.selectedSegmentIndex = 0
-        segmentedControl.addTarget(self, action: #selector(difficultyChanged(_:)), for: .valueChanged)
-        let difficultyItem = UIBarButtonItem(customView: segmentedControl)
-        
-        // For portrait mode, use a more compact toolbar
-        let toolbarHeight: CGFloat = 44
-        toolbar = UIToolbar(frame: CGRect(x: 0, y: 0, width: bounds.width, height: toolbarHeight))
-        
-        // For portrait mode, we'll use a simpler set of items
-        toolbar.items = [
-            newGameButton, flexSpace,
-            difficultyItem, flexSpace,
-            timerItem
-        ]
-        
-        // Add a second toolbar for score and moves
-        let secondToolbar = UIToolbar(frame: CGRect(x: 0, y: toolbarHeight, width: bounds.width, height: toolbarHeight))
-        secondToolbar.items = [
-            scoreItem, flexSpace,
-            movesItem, flexSpace,
-            undoButton, flexSpace,
-            hintButton
-        ]
-        
+        // Initialize toolbar but don't show it (using labels and buttons instead)
+        toolbar = UIToolbar(frame: CGRect(x: 0, y: 0, width: bounds.width, height: 44))
+        toolbar.isHidden = true
         addSubview(toolbar)
-        addSubview(secondToolbar)
+        
+        // Create labels for game information with modern style
+        timerLabel = createStatusLabel(withText: "Süre: 00:00")
+        scoreLabel = createStatusLabel(withText: "Puan: 500")
+        movesLabel = createStatusLabel(withText: "Hamle: 0")
+        
+        statusLabels = [timerLabel, scoreLabel, movesLabel]
+        
+        // Position labels at the top
+        let topPadding: CGFloat = 40
+        let labelHeight: CGFloat = 30
+        let labelSpacing: CGFloat = 20
+        let totalWidth = bounds.width - 80
+        
+        // Layout labels horizontally
+        for (index, label) in statusLabels.enumerated() {
+            let labelWidth = totalWidth / CGFloat(statusLabels.count)
+            label.frame = CGRect(
+                x: 40 + CGFloat(index) * labelWidth,
+                y: topPadding,
+                width: labelWidth,
+                height: labelHeight
+            )
+            
+            // Show/hide based on settings
+            if label == timerLabel {
+                label.isHidden = !GameConfig.showTimer
+            } else if label == scoreLabel {
+                label.isHidden = !GameConfig.showScore
+            }
+            
+            addSubview(label)
+        }
+        
+        // Add buttons
+        let buttonSize: CGFloat = 40
+        let buttonMargin: CGFloat = 10
+        
+        // Undo button
+        let undoButton = createGameButton(
+            image: UIImage(systemName: "arrow.uturn.backward"),
+            x: buttonMargin,
+            y: topPadding - 5,
+            action: #selector(undoMove)
+        )
+        addSubview(undoButton)
+        
+        // Deal button
+        let dealButton = createGameButton(
+            image: UIImage(systemName: "arrow.clockwise"),
+            x: bounds.width - buttonSize - buttonMargin,
+            y: topPadding - 5,
+            action: #selector(dealCards)
+        )
+        addSubview(dealButton)
+        
+        // Hint button (in between toolbar labels)
+        let hintButton = createGameButton(
+            image: UIImage(systemName: "lightbulb.fill"),
+            x: bounds.width / 2 - buttonSize / 2,
+            y: topPadding + labelHeight + 5,
+            action: #selector(showHint)
+        )
+        addSubview(hintButton)
+        
+        // Challenge label if playing a daily challenge
+        if isChallenge, let challenge = currentChallenge {
+            let challengeLabel = UILabel(frame: CGRect(x: 0, y: topPadding + labelHeight + 40, width: bounds.width, height: 30))
+            challengeLabel.text = "Günlük Meydan Okuma: \(challenge.name)"
+            challengeLabel.textAlignment = .center
+            challengeLabel.textColor = .white
+            challengeLabel.font = UIFont.boldSystemFont(ofSize: 14)
+            challengeLabel.backgroundColor = UIColor.black.withAlphaComponent(0.4)
+            addSubview(challengeLabel)
+        }
     }
     
-    private func createLabel(withText text: String) -> UILabel {
+    private func createStatusLabel(withText text: String) -> UILabel {
         let label = UILabel()
         label.text = text
         label.textColor = .white
-        label.font = UIFont.systemFont(ofSize: 14)
-        label.sizeToFit()
+        label.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
+        label.textAlignment = .center
+        label.backgroundColor = UIColor(white: 0, alpha: 0.5)
+        label.layer.cornerRadius = 14
+        label.clipsToBounds = true
+        
+        // Add subtle inner shadow
+        label.layer.shadowColor = UIColor.black.cgColor
+        label.layer.shadowOffset = CGSize(width: 0, height: 1)
+        label.layer.shadowOpacity = 0.25
+        label.layer.shadowRadius = 2
+        label.layer.masksToBounds = false
+        
         return label
+    }
+    
+    private func createGameButton(image: UIImage?, x: CGFloat, y: CGFloat, action: Selector) -> UIButton {
+        let button = UIButton(type: .system)
+        
+        // Create a template image with the correct size
+        var buttonImage = image
+        let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
+        if let originalImage = image {
+            buttonImage = originalImage.withConfiguration(config)
+        }
+        
+        button.setImage(buttonImage, for: .normal)
+        button.tintColor = .white
+        button.backgroundColor = UIColor(white: 0, alpha: 0.5)
+        button.layer.cornerRadius = 22
+        button.frame = CGRect(x: x, y: y, width: 44, height: 44)
+        
+        // Add shadow for depth
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOffset = CGSize(width: 0, height: 2)
+        button.layer.shadowRadius = 4
+        button.layer.shadowOpacity = 0.3
+        button.layer.masksToBounds = false
+        
+        // Add a subtle highlight for pressed state
+        button.addTarget(self, action: #selector(buttonTouchDown(_:)), for: .touchDown)
+        button.addTarget(self, action: #selector(buttonTouchUp(_:)), for: [.touchUpInside, .touchUpOutside, .touchCancel])
+        
+        button.addTarget(self, action: action, for: .touchUpInside)
+        return button
+    }
+    
+    @objc private func buttonTouchDown(_ sender: UIButton) {
+        UIView.animate(withDuration: 0.1) {
+            sender.transform = CGAffineTransform(scaleX: 0.95, y: 0.95)
+            sender.alpha = 0.9
+        }
+        
+        if GameConfig.hapticFeedbackEnabled {
+            let impact = UIImpactFeedbackGenerator(style: .light)
+            impact.impactOccurred()
+        }
+    }
+    
+    @objc private func buttonTouchUp(_ sender: UIButton) {
+        UIView.animate(withDuration: 0.1) {
+            sender.transform = .identity
+            sender.alpha = 1.0
+        }
     }
     
     private func setupStacks() {
@@ -171,14 +367,29 @@ class SpiderSolitaireView: UIView {
         let y = bounds.height - height - margin
         
         stockPile = UIView(frame: CGRect(x: margin, y: y, width: width, height: height))
-        stockPile.backgroundColor = .clear
-        stockPile.layer.borderWidth = 1.0
-        stockPile.layer.borderColor = UIColor.white.cgColor
-        stockPile.layer.cornerRadius = 8.0
+        stockPile.backgroundColor = UIColor(white: 0, alpha: 0.2)
+        stockPile.layer.borderWidth = 2.0
+        stockPile.layer.borderColor = UIColor.white.withAlphaComponent(0.5).cgColor
+        stockPile.layer.cornerRadius = 12.0
+        
+        // Add visual indicator for stock pile
+        let indicatorLabel = UILabel(frame: CGRect(x: 0, y: 0, width: width, height: height))
+        indicatorLabel.text = "🔄"
+        indicatorLabel.font = UIFont.systemFont(ofSize: 24)
+        indicatorLabel.textAlignment = .center
+        indicatorLabel.alpha = 0.7
+        stockPile.addSubview(indicatorLabel)
         
         // Add tap gesture recognizer
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(stockPileTapped))
         stockPile.addGestureRecognizer(tapGesture)
+        
+        // Add shadow for depth
+        stockPile.layer.shadowColor = UIColor.black.cgColor
+        stockPile.layer.shadowOffset = CGSize(width: 0, height: 3)
+        stockPile.layer.shadowRadius = 5
+        stockPile.layer.shadowOpacity = 0.3
+        stockPile.layer.masksToBounds = false
         
         addSubview(stockPile)
     }
@@ -195,7 +406,16 @@ class SpiderSolitaireView: UIView {
         let y = bounds.height - height - margin
         
         completedSets = UIView(frame: CGRect(x: x, y: y, width: width, height: height))
-        completedSets.backgroundColor = .clear
+        completedSets.backgroundColor = UIColor(white: 0, alpha: 0.1)
+        completedSets.layer.cornerRadius = 12.0
+        
+        // Add a label to indicate completed sets area
+        let completedLabel = UILabel(frame: CGRect(x: 0, y: 0, width: width, height: 24))
+        completedLabel.text = "Tamamlanan Seriler"
+        completedLabel.font = UIFont.systemFont(ofSize: 12, weight: .medium)
+        completedLabel.textColor = UIColor.white.withAlphaComponent(0.8)
+        completedLabel.textAlignment = .center
+        completedSets.addSubview(completedLabel)
         
         addSubview(completedSets)
     }
@@ -420,34 +640,24 @@ class SpiderSolitaireView: UIView {
     }
     
     private func checkForCompletedSets() {
-        // Check each stack for completed sets (K down to A of the same suit)
+        // Check each stack for completed sets
         for stack in stacks {
-            for i in 0..<stack.cards.count {
-                if stack.isCompletedSet(fromIndex: i) {
-                    // We found a completed set, remove it from the stack
-                    let completedCards = Array(stack.cards.suffix(from: i))
-                    for card in completedCards {
-                        _ = stack.removeCard(card)
-                    }
-                    
-                    // Add to completed area
-                    addCompletedSet(completedCards)
-                    
-                    // Update game state
-                    completedSetCount += 1
-                    score += 100 // Bonus for completing a set
-                    
-                    // Check for game win
-                    if completedSetCount >= 8 { // 8 completed sets means the game is won
-                        gameWon()
-                    }
-                    
-                    // Update UI
-                    updateLabels()
-                    
-                    // Since we modified the stack, we need to restart the check
-                    return checkForCompletedSets()
+            if stack.checkForCompletedSequences() {
+                // Found and processed a completed set
+                completedSetCount += 1
+                score += GameConfig.completeSequencePoints
+                
+                // Check if game is won (8 completed sets)
+                if completedSetCount == 8 {
+                    gameWon()
                 }
+                
+                // Update UI
+                updateLabels()
+                
+                // Check again since stack contents have changed
+                checkForCompletedSets()
+                return
             }
         }
     }
@@ -533,14 +743,53 @@ class SpiderSolitaireView: UIView {
         startNewGame()
     }
     
-    @objc private func undoTapped() {
-        // Implement undo functionality
-        showAlert(title: "Bilgi", message: "Geri alma özelliği şu anda mevcut değil.")
+    @objc private func dealCards() {
+        stockPileTapped()
     }
     
-    @objc private func hintTapped() {
-        // Implement hint functionality
-        showAlert(title: "Bilgi", message: "İpucu özelliği şu anda mevcut değil.")
+    @objc private func undoMove() {
+        guard !moveHistory.isEmpty else { return }
+        
+        let lastMove = moveHistory.removeLast()
+        
+        // Remove cards from destination stack
+        let destinationStack = stacks[lastMove.destinationStack]
+        let cardsToMove = lastMove.cards
+        
+        // Add cards back to source stack
+        let sourceStack = stacks[lastMove.sourceStack]
+        
+        // Remove cards from destination
+        for card in cardsToMove {
+            destinationStack.removeCard(card)
+        }
+        
+        // Add cards back to source
+        sourceStack.addCards(cardsToMove)
+        
+        // If we revealed a card during this move, hide it again
+        if lastMove.didRevealCard, let lastCard = sourceStack.cards.last {
+            lastCard.flip()
+        }
+        
+        // Update score and moves
+        moves -= 1
+        score -= GameConfig.moveCardPoints
+        updateStatusLabels()
+        
+        // Provide haptic feedback
+        if GameConfig.hapticFeedbackEnabled {
+            let feedback = UIImpactFeedbackGenerator(style: .medium)
+            feedback.impactOccurred()
+        }
+    }
+    
+    private func updateStatusLabels() {
+        updateLabels()
+    }
+    
+    private func updateStockPileDisplay() {
+        updateStockPileUI()
     }
     
     @objc private func difficultyChanged(_ sender: UISegmentedControl) {
@@ -558,6 +807,365 @@ class SpiderSolitaireView: UIView {
         
         // Start a new game with the selected difficulty
         startNewGame()
+    }
+    
+    // Gets a random suit based on difficulty level
+    private func getRandomSuit() -> String {
+        let availableSuits: [String]
+        
+        switch GameConfig.difficultyLevel {
+        case .easy:
+            availableSuits = ["♠"]
+        case .medium:
+            availableSuits = ["♠", "♥"]
+        case .hard:
+            availableSuits = ["♠", "♥", "♦", "♣"]
+        }
+        
+        return availableSuits.randomElement() ?? "♠"
+    }
+    
+    @objc private func showHint() {
+        // Find a valid move
+        var hintFound = false
+        
+        // Check each stack for movable cards
+        for sourceStackIndex in 0..<stacks.count {
+            let sourceStack = stacks[sourceStackIndex]
+            let movableSequences = sourceStack.getMovableSequences()
+            
+            for sequence in movableSequences {
+                // Try to find a valid destination for each sequence
+                for destStackIndex in 0..<stacks.count where destStackIndex != sourceStackIndex {
+                    let destStack = stacks[destStackIndex]
+                    
+                    if destStack.canAcceptCards(sequence) {
+                        // We found a valid move, highlight it
+                        sequence.first?.highlightAsHint()
+                        
+                        if let destCard = destStack.cards.last {
+                            destCard.highlightAsMovable()
+                        }
+                        
+                        hintFound = true
+                        break
+                    }
+                }
+                
+                if hintFound {
+                    break
+                }
+            }
+            
+            if hintFound {
+                break
+            }
+        }
+        
+        // If no hint found, check if dealing is possible
+        if !hintFound && !stockCards.isEmpty {
+            // Highlight the stock pile
+            UIView.animate(withDuration: 0.3, animations: {
+                self.stockPile.transform = CGAffineTransform(scaleX: 1.1, y: 1.1)
+                self.stockPile.layer.borderColor = UIColor.systemYellow.cgColor
+                self.stockPile.layer.borderWidth = 3.0
+            }, completion: { _ in
+                UIView.animate(withDuration: 0.3) {
+                    self.stockPile.transform = .identity
+                    self.stockPile.layer.borderWidth = 1.0
+                    self.stockPile.layer.borderColor = UIColor.white.cgColor
+                }
+            })
+        }
+    }
+    
+    private func checkForSavedGame() {
+        // Only check if we haven't initialized a game yet
+        if stacks.isEmpty || stacks[0].cards.isEmpty {
+            if GameManager.shared.hasSavedGame() {
+                showContinueGamePrompt()
+            }
+        }
+    }
+    
+    private func showContinueGamePrompt() {
+        let continueView = UIView(frame: bounds)
+        continueView.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+        
+        let container = UIView(frame: CGRect(x: 50, y: bounds.height/2 - 100, width: bounds.width - 100, height: 200))
+        container.backgroundColor = UIColor.systemBackground
+        container.layer.cornerRadius = 16
+        continueView.addSubview(container)
+        
+        let titleLabel = UILabel(frame: CGRect(x: 20, y: 20, width: container.bounds.width - 40, height: 30))
+        titleLabel.text = "Devam Etmek İster Misiniz?"
+        titleLabel.font = UIFont.boldSystemFont(ofSize: 20)
+        titleLabel.textAlignment = .center
+        container.addSubview(titleLabel)
+        
+        let messageLabel = UILabel(frame: CGRect(x: 20, y: 60, width: container.bounds.width - 40, height: 60))
+        messageLabel.text = "Kaydedilmiş bir oyun bulundu. Kaldığınız yerden devam etmek ister misiniz?"
+        messageLabel.font = UIFont.systemFont(ofSize: 16)
+        messageLabel.numberOfLines = 0
+        messageLabel.textAlignment = .center
+        container.addSubview(messageLabel)
+        
+        // Buttons
+        let buttonWidth = (container.bounds.width - 60) / 2
+        
+        let newGameButton = UIButton(type: .system)
+        newGameButton.frame = CGRect(x: 20, y: container.bounds.height - 60, width: buttonWidth, height: 40)
+        newGameButton.setTitle("Yeni Oyun", for: .normal)
+        newGameButton.backgroundColor = UIColor.systemRed
+        newGameButton.setTitleColor(.white, for: .normal)
+        newGameButton.layer.cornerRadius = 8
+        newGameButton.tag = 0 // For identification
+        newGameButton.addTarget(self, action: #selector(continueGameChoice(_:)), for: .touchUpInside)
+        container.addSubview(newGameButton)
+        
+        let continueButton = UIButton(type: .system)
+        continueButton.frame = CGRect(x: container.bounds.width - buttonWidth - 20, y: container.bounds.height - 60, width: buttonWidth, height: 40)
+        continueButton.setTitle("Devam Et", for: .normal)
+        continueButton.backgroundColor = UIColor.systemBlue
+        continueButton.setTitleColor(.white, for: .normal)
+        continueButton.layer.cornerRadius = 8
+        continueButton.tag = 1 // For identification
+        continueButton.addTarget(self, action: #selector(continueGameChoice(_:)), for: .touchUpInside)
+        container.addSubview(continueButton)
+        
+        addSubview(continueView)
+        
+        // Animate in
+        container.transform = CGAffineTransform(scaleX: 0.1, y: 0.1)
+        UIView.animate(withDuration: 0.3) {
+            container.transform = .identity
+        }
+    }
+    
+    @objc private func continueGameChoice(_ sender: UIButton) {
+        if let promptView = sender.superview?.superview {
+            UIView.animate(withDuration: 0.3, animations: {
+                promptView.alpha = 0
+            }, completion: { _ in
+                promptView.removeFromSuperview()
+                
+                if sender.tag == 1 {
+                    // Continue saved game
+                    self.loadSavedGame()
+                } else {
+                    // Start new game
+                    GameManager.shared.clearSavedGame()
+                    self.startNewGame()
+                }
+            })
+        }
+    }
+    
+    private func loadSavedGame() {
+        guard let savedGame = GameManager.shared.loadSavedGame() else {
+            startNewGame()
+            return
+        }
+        
+        // Reset game state
+        resetGame()
+        
+        // Restore game state
+        score = savedGame.score
+        moves = savedGame.moves
+        elapsedTime = savedGame.elapsedTime
+        completedSetCount = savedGame.completedSetCount
+        GameConfig.difficultyLevel = savedGame.difficultyLevel
+        seed = savedGame.seed
+        isChallenge = savedGame.isChallenge
+        
+        // Create stock pile cards
+        stockCards = []
+        for _ in 0..<savedGame.stockPileCount {
+            // Create face-down cards for stock
+            let suit = getRandomSuit()
+            let value = GameConfig.cardValues.randomElement() ?? "A"
+            let card = Card(value: value, suit: suit, faceUp: false)
+            stockCards.append(card)
+        }
+        
+        // Restore card stacks
+        for stackIndex in 0..<savedGame.cards.count {
+            let stackState = savedGame.cards[stackIndex]
+            
+            for cardState in stackState {
+                let card = Card(value: cardState.value, suit: cardState.suit, faceUp: cardState.isRevealed)
+                card.isRevealed = cardState.isRevealed
+                stacks[stackIndex].addCard(card)
+            }
+        }
+        
+        // Update UI
+        updateStockPileDisplay()
+        updateStatusLabels()
+        
+        // Start timer
+        startTimer()
+    }
+    
+    private func saveCurrentGame() {
+        GameManager.shared.saveGame(
+            score: score,
+            moves: moves,
+            elapsedTime: elapsedTime,
+            difficultyLevel: GameConfig.difficultyLevel,
+            completedSetCount: completedSetCount,
+            stacks: stacks,
+            stockPileCount: stockCards.count,
+            seed: seed,
+            isChallenge: isChallenge
+        )
+    }
+    
+    func startDailyChallenge(challenge: DailyChallenge) {
+        // Set up a challenge game
+        isChallenge = true
+        currentChallenge = challenge
+        GameConfig.difficultyLevel = challenge.difficulty
+        seed = challenge.seed
+        
+        // Start a new game with the challenge seed
+        startNewGame()
+    }
+    
+    private func showGameCompleteModal() {
+        // Save statistics
+        let (gamesPlayed, gamesWon, bestScore, fastestTime) = GameManager.shared.loadStatistics()
+        GameManager.shared.saveStatistics(
+            gamesPlayed: gamesPlayed,
+            gamesWon: gamesWon + 1,
+            bestScore: max(bestScore, score),
+            fastestTime: elapsedTime > 0 ? (fastestTime > 0 ? min(fastestTime, elapsedTime) : elapsedTime) : fastestTime
+        )
+        
+        // If this was a challenge, mark it as completed
+        if isChallenge, let challenge = currentChallenge {
+            challenge.saveCompletion(score: score, time: elapsedTime)
+        }
+        
+        // Clear saved game
+        GameManager.shared.clearSavedGame()
+        
+        let winView = UIView(frame: bounds)
+        winView.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+        
+        let container = UIView(frame: CGRect(x: 50, y: bounds.height/2 - 150, width: bounds.width - 100, height: 300))
+        container.backgroundColor = UIColor.systemBackground
+        container.layer.cornerRadius = 16
+        winView.addSubview(container)
+        
+        // Confetti effect
+        addConfettiEffect(to: winView)
+        
+        let titleLabel = UILabel(frame: CGRect(x: 20, y: 20, width: container.bounds.width - 40, height: 40))
+        titleLabel.text = "Tebrikler!"
+        titleLabel.font = UIFont.boldSystemFont(ofSize: 24)
+        titleLabel.textAlignment = .center
+        container.addSubview(titleLabel)
+        
+        // Format time
+        let minutes = Int(elapsedTime) / 60
+        let seconds = Int(elapsedTime) % 60
+        let timeString = String(format: "%02d:%02d", minutes, seconds)
+        
+        let messageLabel = UILabel(frame: CGRect(x: 20, y: 70, width: container.bounds.width - 40, height: 150))
+        messageLabel.text = """
+            Oyunu başarıyla tamamladınız!
+            
+            Puan: \(score)
+            Hamle: \(moves)
+            Süre: \(timeString)
+            Zorluk: \(GameConfig.difficultyLevel.description)
+            
+            \(isChallenge ? "Günlük Meydan Okumayı Tamamladınız!" : "")
+        """
+        messageLabel.font = UIFont.systemFont(ofSize: 16)
+        messageLabel.numberOfLines = 0
+        messageLabel.textAlignment = .center
+        container.addSubview(messageLabel)
+        
+        let newGameButton = UIButton(type: .system)
+        newGameButton.frame = CGRect(x: container.bounds.width/2 - 60, y: container.bounds.height - 60, width: 120, height: 40)
+        newGameButton.setTitle("Yeni Oyun", for: .normal)
+        newGameButton.backgroundColor = UIColor.systemBlue
+        newGameButton.setTitleColor(.white, for: .normal)
+        newGameButton.layer.cornerRadius = 8
+        newGameButton.addTarget(self, action: #selector(newGameAfterWin), for: .touchUpInside)
+        container.addSubview(newGameButton)
+        
+        addSubview(winView)
+        
+        // Animate in
+        container.transform = CGAffineTransform(scaleX: 0.1, y: 0.1)
+        UIView.animate(withDuration: 0.5, delay: 0.5, usingSpringWithDamping: 0.7, initialSpringVelocity: 0.5, options: [], animations: {
+            container.transform = .identity
+        }, completion: nil)
+        
+        // Play win sound
+        if GameConfig.soundEnabled {
+            // Sound would be played here
+        }
+        
+        // Provide success haptic feedback
+        if GameConfig.hapticFeedbackEnabled {
+            let feedback = UINotificationFeedbackGenerator()
+            feedback.notificationOccurred(.success)
+        }
+    }
+    
+    @objc private func newGameAfterWin(_ sender: UIButton) {
+        if let winView = sender.superview?.superview {
+            UIView.animate(withDuration: 0.3, animations: {
+                winView.alpha = 0
+            }, completion: { _ in
+                winView.removeFromSuperview()
+                self.startNewGame()
+            })
+        }
+    }
+    
+    private func addConfettiEffect(to view: UIView) {
+        let confettiColors: [UIColor] = [.systemRed, .systemBlue, .systemGreen, .systemYellow, .systemPurple, .systemOrange]
+        let confettiShapes = ["■", "●", "▲", "★", "♦️", "♣️", "♥️", "♠️"]
+        
+        for _ in 0..<100 {
+            let confetti = UILabel()
+            confetti.text = confettiShapes.randomElement()
+            confetti.textColor = confettiColors.randomElement()
+            confetti.font = UIFont.systemFont(ofSize: CGFloat.random(in: 10...20))
+            
+            let startX = CGFloat.random(in: 0...bounds.width)
+            let startY = -20
+            
+            confetti.frame = CGRect(x: startX, y: CGFloat(startY), width: 20, height: 20)
+            view.addSubview(confetti)
+            
+            let duration = TimeInterval.random(in: 2...4)
+            let delay = TimeInterval.random(in: 0...1)
+            
+            UIView.animate(withDuration: duration, delay: delay, options: [.curveEaseOut], animations: {
+                confetti.frame.origin.y = self.bounds.height + 20
+                confetti.frame.origin.x += CGFloat.random(in: -50...50)
+                confetti.transform = CGAffineTransform(rotationAngle: .pi * 2 * CGFloat.random(in: 1...3))
+                confetti.alpha = 0
+            }, completion: { _ in
+                confetti.removeFromSuperview()
+            })
+        }
+    }
+    
+    func updateSettings() {
+        // Update visibility of UI elements based on settings
+        timerLabel?.isHidden = !GameConfig.showTimer
+        scoreLabel?.isHidden = !GameConfig.showScore
+        
+        // Refresh toolbar
+        setupToolbar()
     }
     
     // MARK: - Card Dragging
@@ -603,7 +1211,7 @@ class SpiderSolitaireView: UIView {
                     createCardSnapshot(cardsToMove)
                     
                     // Remove cards from stack temporarily
-                    _ = stack.removeCards(from: card)
+                    _ = stack.removeCards(from: stack.indexOf(card: card)!)
                     
                     // Update UI
                     bringSubviewToFront(cardSnapshot!)
@@ -653,7 +1261,7 @@ class SpiderSolitaireView: UIView {
         }
         
         // Check if we can place the cards in the target stack
-        if let targetStack = targetStack, targetStack.canAddCards(cards) {
+        if let targetStack = targetStack, targetStack.canAcceptCards(cards) {
             // Add the cards to the target stack
             targetStack.addCards(cards, animated: true)
             
@@ -676,5 +1284,24 @@ class SpiderSolitaireView: UIView {
         draggingCards = nil
         draggingCard = nil
         dragOriginStack = nil
+    }
+    
+    func updateTheme() {
+        // Update background
+        backgroundColor = getThemeBackgroundColor()
+        
+        // Update card backs
+        for stack in stacks {
+            for card in stack.cards {
+                card.updateTheme()
+            }
+        }
+        
+        // Update stock pile cards
+        for subview in stockPile.subviews where subview is Card {
+            if let card = subview as? Card {
+                card.updateTheme()
+            }
+        }
     }
 } 
