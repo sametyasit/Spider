@@ -60,9 +60,6 @@ class Card: UIView {
         super.init(frame: CGRect(x: 0, y: 0, width: GameConfig.cardWidth, height: GameConfig.cardHeight))
         
         setupCard()
-        
-        // Debug bilgisi
-        print("Kart oluşturuldu: \(value) \(suit), faceUp: \(faceUp)")
     }
     
     required init?(coder: NSCoder) {
@@ -72,39 +69,44 @@ class Card: UIView {
     // MARK: - Setup
     
     private func setupCard() {
-        // Setup card appearance
-        layer.cornerRadius = 12.0
+        // Setup card appearance - daha basit
         clipsToBounds = false
+        layer.cornerRadius = 8.0 // Daha profesyonel görünüm için köşeleri daha az yuvarla
         
-        // Add improved shadow for 3D effect
+        // Daha ince, şık gölge
         layer.shadowColor = UIColor.black.cgColor
-        layer.shadowOffset = CGSize(width: 1.0, height: 2.0)
-        layer.shadowRadius = 3.0
-        layer.shadowOpacity = 0.4
+        layer.shadowOffset = CGSize(width: 0.5, height: 1.5)
+        layer.shadowRadius = 2.0
+        layer.shadowOpacity = 0.3
         
+        // Arka ve ön tarafları oluştur
+        setupFrontAndBackViews()
+        
+        // Set initial state
+        isRevealed = faceUp
+    }
+    
+    private func setupFrontAndBackViews() {
         // Setup front view (face up)
         frontView.frame = bounds
         frontView.backgroundColor = .white
-        frontView.layer.cornerRadius = 12.0
-        frontView.isHidden = !faceUp
+        frontView.layer.cornerRadius = 8.0
         frontView.layer.borderWidth = 0.5
-        frontView.layer.borderColor = UIColor.lightGray.cgColor
+        frontView.layer.borderColor = UIColor.gray.withAlphaComponent(0.3).cgColor
         frontView.clipsToBounds = true
+        frontView.isHidden = !faceUp
         addSubview(frontView)
         setupCardFrontContent()
         
         // Setup back view (face down)
         backView.frame = bounds
-        backView.layer.cornerRadius = 12.0
-        backView.isHidden = faceUp
+        backView.layer.cornerRadius = 8.0
         backView.layer.borderWidth = 0.5
-        backView.layer.borderColor = UIColor.lightGray.cgColor
+        backView.layer.borderColor = UIColor.gray.withAlphaComponent(0.3).cgColor
         backView.clipsToBounds = true
+        backView.isHidden = faceUp
         addSubview(backView)
         setupCardBackContent()
-        
-        // Set initial state
-        isRevealed = faceUp
     }
     
     private func setupCardFrontContent() {
@@ -114,53 +116,42 @@ class Card: UIView {
         }
         frontValueLabels.removeAll()
         
-        // Add a subtle gradient background
-        let gradientLayer = CAGradientLayer()
-        gradientLayer.frame = frontView.bounds
-        gradientLayer.colors = [
-            UIColor.white.cgColor,
-            UIColor(white: 0.95, alpha: 1.0).cgColor
-        ]
-        gradientLayer.locations = [0.0, 1.0]
-        gradientLayer.cornerRadius = frontView.layer.cornerRadius
-        frontView.layer.insertSublayer(gradientLayer, at: 0)
+        // Beyaz arka plan
+        frontView.backgroundColor = .white
         
-        // Get color for the suit
+        // Kart rengini belirle
         let color = GameConfig.suitColors[suit] ?? .black
         
-        // Top-left value and suit
+        // Sol üst değer ve simge
         let topLabel = createValueLabel(position: .topLeft, color: color)
         frontView.addSubview(topLabel)
         frontValueLabels.append(topLabel)
         
-        // Bottom-right value and suit (inverted)
+        // Sağ alt değer ve simge (ters çevrilmiş)
         let bottomLabel = createValueLabel(position: .bottomRight, color: color)
         frontView.addSubview(bottomLabel)
         frontValueLabels.append(bottomLabel)
         
-        // Center suit with larger size
+        // Ortadaki büyük simge
         frontSuitLabel = UILabel()
         frontSuitLabel.text = suit
         frontSuitLabel.textColor = color
-        frontSuitLabel.font = UIFont.systemFont(ofSize: 50, weight: .medium)
+        frontSuitLabel.font = UIFont.systemFont(ofSize: bounds.width * 0.6, weight: .medium)
         frontSuitLabel.textAlignment = .center
         frontSuitLabel.frame = CGRect(x: 0, y: 0, width: bounds.width, height: bounds.height)
         
-        // Add shadow to center suit for more depth
+        // Simgeye hafif gölge ekle
         frontSuitLabel.layer.shadowColor = UIColor.black.cgColor
         frontSuitLabel.layer.shadowOffset = CGSize(width: 0, height: 1)
         frontSuitLabel.layer.shadowRadius = 1
-        frontSuitLabel.layer.shadowOpacity = 0.3
+        frontSuitLabel.layer.shadowOpacity = 0.2
         
         frontView.addSubview(frontSuitLabel)
         
-        // Add decorative mini suits for face cards
+        // J, Q, K kartlarına özel süslemeler ekle
         if ["J", "Q", "K"].contains(value) {
             addFaceCardDecorations(color: color)
         }
-        
-        // Debug bilgisi
-        print("Kart ön yüzü oluşturuldu: \(value) \(suit)")
     }
     
     private func addFaceCardDecorations(color: UIColor) {
@@ -209,100 +200,146 @@ class Card: UIView {
         // Get current theme
         let theme = GameConfig.themes[GameConfig.currentTheme] ?? GameConfig.themes["Klasik"]!
         
-        // Set background color with gradient
+        // Profesyonel görünüm için gradient arka plan
         let gradientLayer = CAGradientLayer()
         gradientLayer.frame = backView.bounds
         gradientLayer.colors = [
             theme.cardBack.cgColor,
-            theme.cardBack.withAlphaComponent(0.8).cgColor
+            theme.cardBack.darker(by: 20).cgColor
         ]
         gradientLayer.locations = [0.0, 1.0]
         gradientLayer.cornerRadius = backView.layer.cornerRadius
         backView.layer.insertSublayer(gradientLayer, at: 0)
         
-        // Create card back pattern with better design
-        let patternView = UIView(frame: CGRect(x: 8, y: 8, width: bounds.width - 16, height: bounds.height - 16))
+        // Daha profesyonel görünüm için çift çerçeveli desen
+        let patternView = UIView(frame: CGRect(x: 4, y: 4, width: bounds.width - 8, height: bounds.height - 8))
         patternView.backgroundColor = UIColor.clear
-        patternView.layer.cornerRadius = 10.0
-        patternView.layer.borderWidth = 3.0
+        patternView.layer.cornerRadius = 6.0
+        patternView.layer.borderWidth = 2.0
         patternView.layer.borderColor = UIColor.white.withAlphaComponent(0.3).cgColor
         backView.addSubview(patternView)
         
-        // Add a second inner border for more design
-        let innerBorder = UIView(frame: CGRect(x: 15, y: 15, width: bounds.width - 30, height: bounds.height - 30))
+        // İç çerçeve
+        let innerBorder = UIView(frame: CGRect(x: 8, y: 8, width: bounds.width - 16, height: bounds.height - 16))
         innerBorder.backgroundColor = UIColor.clear
-        innerBorder.layer.cornerRadius = 6.0
+        innerBorder.layer.cornerRadius = 4.0
         innerBorder.layer.borderWidth = 1.0
         innerBorder.layer.borderColor = UIColor.white.withAlphaComponent(0.2).cgColor
         backView.addSubview(innerBorder)
         
-        // Add pattern to back
-        backPattern = UILabel(frame: CGRect(x: 0, y: 0, width: backView.bounds.width, height: backView.bounds.height))
+        // Kart sırtındaki desen (örümcek ya da başka simge)
+        backPattern = UILabel(frame: innerBorder.bounds)
         backPattern.text = theme.pattern
         backPattern.textAlignment = .center
-        backPattern.font = UIFont.systemFont(ofSize: 40)
+        backPattern.font = UIFont.systemFont(ofSize: min(bounds.width, bounds.height) * 0.4)
         backPattern.textColor = .white
         
-        // Add glow to pattern
+        // Desene parlama efekti ekle
         backPattern.layer.shadowColor = UIColor.white.cgColor
-        backPattern.layer.shadowRadius = 3
-        backPattern.layer.shadowOpacity = 0.5
+        backPattern.layer.shadowRadius = 2
+        backPattern.layer.shadowOpacity = 0.3
         backPattern.layer.shadowOffset = .zero
         
-        backView.addSubview(backPattern)
+        innerBorder.addSubview(backPattern)
         
-        // Add additional decorations
-        let gridSize = 3
-        let gridItemSize = patternView.bounds.width / CGFloat(gridSize)
+        // Süsleme: Köşelerde küçük desenler
+        addBackPatternDecorations(theme: theme)
+    }
+    
+    private func addBackPatternDecorations(theme: (background: UIColor, cardBack: UIColor, pattern: String)) {
+        // Köşelerde ufak desenler ekle
+        let miniSize = bounds.width * 0.15
+        let margin = bounds.width * 0.08
         
-        for row in 0..<gridSize {
-            for col in 0..<gridSize {
-                if (row + col) % 2 == 0 && !(row == gridSize/2 && col == gridSize/2) {
-                    let miniPattern = UILabel()
-                    miniPattern.text = theme.pattern
-                    miniPattern.textAlignment = .center
-                    miniPattern.font = UIFont.systemFont(ofSize: 12)
-                    miniPattern.textColor = .white.withAlphaComponent(0.3)
-                    miniPattern.frame = CGRect(
-                        x: CGFloat(col) * gridItemSize,
-                        y: CGFloat(row) * gridItemSize,
-                        width: gridItemSize,
-                        height: gridItemSize
-                    )
-                    patternView.addSubview(miniPattern)
-                }
-            }
-        }
+        // Sol üst
+        let topLeftPattern = UILabel()
+        topLeftPattern.text = theme.pattern
+        topLeftPattern.textAlignment = .center
+        topLeftPattern.font = UIFont.systemFont(ofSize: miniSize)
+        topLeftPattern.textColor = UIColor.white.withAlphaComponent(0.5)
+        topLeftPattern.frame = CGRect(x: margin, y: margin, width: miniSize, height: miniSize)
+        backView.addSubview(topLeftPattern)
+        
+        // Sağ üst
+        let topRightPattern = UILabel()
+        topRightPattern.text = theme.pattern
+        topRightPattern.textAlignment = .center
+        topRightPattern.font = UIFont.systemFont(ofSize: miniSize)
+        topRightPattern.textColor = UIColor.white.withAlphaComponent(0.5)
+        topRightPattern.frame = CGRect(x: bounds.width - miniSize - margin, y: margin, width: miniSize, height: miniSize)
+        backView.addSubview(topRightPattern)
+        
+        // Sol alt
+        let bottomLeftPattern = UILabel()
+        bottomLeftPattern.text = theme.pattern
+        bottomLeftPattern.textAlignment = .center
+        bottomLeftPattern.font = UIFont.systemFont(ofSize: miniSize)
+        bottomLeftPattern.textColor = UIColor.white.withAlphaComponent(0.5)
+        bottomLeftPattern.frame = CGRect(x: margin, y: bounds.height - miniSize - margin, width: miniSize, height: miniSize)
+        backView.addSubview(bottomLeftPattern)
+        
+        // Sağ alt
+        let bottomRightPattern = UILabel()
+        bottomRightPattern.text = theme.pattern
+        bottomRightPattern.textAlignment = .center
+        bottomRightPattern.font = UIFont.systemFont(ofSize: miniSize)
+        bottomRightPattern.textColor = UIColor.white.withAlphaComponent(0.5)
+        bottomRightPattern.frame = CGRect(x: bounds.width - miniSize - margin, y: bounds.height - miniSize - margin, width: miniSize, height: miniSize)
+        backView.addSubview(bottomRightPattern)
     }
     
     private func createValueLabel(position: CardCorner, color: UIColor) -> UILabel {
         let label = UILabel()
         let isTopLeft = position == .topLeft
         
-        // Set label text with value and suit
-        label.text = "\(value)\n\(suit)"
-        label.textColor = color
-        label.font = UIFont.systemFont(ofSize: 14, weight: .bold)
-        label.numberOfLines = 2
-        label.textAlignment = .center
+        // Profesyonel görünüm için kartın boyutuna göre ayarla
+        let labelWidth = bounds.width * 0.28
+        let labelHeight = bounds.height * 0.22
+        let margin = bounds.width * 0.05
         
-        // Position the label
-        let labelWidth: CGFloat = 25
-        let labelHeight: CGFloat = 30
-        let margin: CGFloat = 5
-        
+        // Simge ve değeri üst üste değil yan yana yerleştir
         if isTopLeft {
             label.frame = CGRect(x: margin, y: margin, width: labelWidth, height: labelHeight)
+            label.text = value
+            
+            // Simgeyi ayrı ekle
+            let suitLabel = UILabel()
+            suitLabel.text = suit
+            suitLabel.textColor = color
+            suitLabel.font = UIFont.systemFont(ofSize: labelHeight * 0.7, weight: .medium)
+            suitLabel.frame = CGRect(x: margin + labelWidth, y: margin, width: labelHeight, height: labelHeight)
+            suitLabel.textAlignment = .center
+            frontView.addSubview(suitLabel)
         } else {
             label.frame = CGRect(
-                x: bounds.width - labelWidth - margin,
+                x: bounds.width - labelWidth - margin - labelHeight,
                 y: bounds.height - labelHeight - margin,
                 width: labelWidth,
                 height: labelHeight
             )
-            // Rotate 180 degrees for bottom right
+            label.text = value
             label.transform = CGAffineTransform(rotationAngle: .pi)
+            
+            // Simgeyi ayrı ekle
+            let suitLabel = UILabel()
+            suitLabel.text = suit
+            suitLabel.textColor = color
+            suitLabel.font = UIFont.systemFont(ofSize: labelHeight * 0.7, weight: .medium)
+            suitLabel.frame = CGRect(
+                x: bounds.width - labelHeight - margin, 
+                y: bounds.height - labelHeight - margin, 
+                width: labelHeight, 
+                height: labelHeight
+            )
+            suitLabel.textAlignment = .center
+            suitLabel.transform = CGAffineTransform(rotationAngle: .pi)
+            frontView.addSubview(suitLabel)
         }
+        
+        // Optimize edilmiş boyut ve stil
+        label.textColor = color
+        label.font = UIFont.systemFont(ofSize: labelHeight * 0.65, weight: .bold)
+        label.textAlignment = .center
         
         return label
     }
@@ -332,9 +369,6 @@ class Card: UIView {
     private func updateCardFace() {
         frontView.isHidden = !isRevealed
         backView.isHidden = isRevealed
-        
-        // Debug bilgisi
-        print("Kart yüzü güncellendi: \(value) \(suit), isRevealed: \(isRevealed)")
     }
     
     func updateTheme() {
@@ -383,13 +417,37 @@ class Card: UIView {
     
     // Check if cards form a complete sequence (K to A in same suit)
     static func isCompleteSequence(cards: [Card]) -> Bool {
+        // En az 13 kart gerekiyor (K'dan A'ya)
         guard cards.count == 13 else { return false }
         
-        // Check if sequence is valid
-        guard isValidSequence(cards: cards) else { return false }
+        // Tüm kartlar açıkta olmalı
+        for card in cards {
+            if !card.isRevealed {
+                return false
+            }
+        }
         
-        // Check if sequence starts with K and ends with A
-        return cards.first?.value == "K" && cards.last?.value == "A"
+        // İlk takımı standart olarak kabul edelim
+        let firstSuit = cards[0].suit
+        
+        // Tüm kartlar aynı takımdan olmalı
+        for card in cards {
+            if card.suit != firstSuit {
+                return false
+            }
+        }
+        
+        // K'dan A'ya kontrol
+        let expectedValues = ["K", "Q", "J", "10", "9", "8", "7", "6", "5", "4", "3", "2", "A"]
+        
+        // Kartlar doğru sırada olmalı
+        for i in 0..<13 {
+            if cards[i].value != expectedValues[i] {
+                return false
+            }
+        }
+        
+        return true
     }
     
     // MARK: - Highlight Effects
@@ -423,5 +481,29 @@ class Card: UIView {
     enum CardCorner {
         case topLeft
         case bottomRight
+    }
+    
+    // Static yardımcı fonksiyonlar
+    static func createFromCardState(cardState: GameConfig.CardState) -> Card {
+        return Card(
+            value: cardState.value,
+            suit: cardState.suit,
+            faceUp: cardState.isRevealed
+        )
+    }
+    
+    // [String: Any] dictionary'den Card oluşturmak için static yardımcı metod
+    static func createFromDict(dict: [String: Any]) -> Card? {
+        guard let value = dict["value"] as? String,
+              let suit = dict["suit"] as? String,
+              let isRevealed = dict["isRevealed"] as? Bool else {
+            return nil
+        }
+        
+        return Card(
+            value: value,
+            suit: suit,
+            faceUp: isRevealed
+        )
     }
 } 
