@@ -27,7 +27,7 @@ class Card: UIView {
         }
     }
     
-    var isSelected: Bool = false {
+    internal var isSelected: Bool = false {
         didSet {
             if isSelected {
                 layer.borderWidth = 2.0
@@ -48,7 +48,7 @@ class Card: UIView {
         }
     }
     
-    var isDraggable: Bool = false
+    internal var isDraggable: Bool = true // Set to true by default to enable dragging
     
     // MARK: - Initialization
     
@@ -60,6 +60,9 @@ class Card: UIView {
         super.init(frame: CGRect(x: 0, y: 0, width: GameConfig.cardWidth, height: GameConfig.cardHeight))
         
         setupCard()
+        
+        // Debug bilgisi
+        print("Kart oluşturuldu: \(value) \(suit), faceUp: \(faceUp)")
     }
     
     required init?(coder: NSCoder) {
@@ -155,6 +158,9 @@ class Card: UIView {
         if ["J", "Q", "K"].contains(value) {
             addFaceCardDecorations(color: color)
         }
+        
+        // Debug bilgisi
+        print("Kart ön yüzü oluşturuldu: \(value) \(suit)")
     }
     
     private func addFaceCardDecorations(color: UIColor) {
@@ -326,6 +332,9 @@ class Card: UIView {
     private func updateCardFace() {
         frontView.isHidden = !isRevealed
         backView.isHidden = isRevealed
+        
+        // Debug bilgisi
+        print("Kart yüzü güncellendi: \(value) \(suit), isRevealed: \(isRevealed)")
     }
     
     func updateTheme() {
