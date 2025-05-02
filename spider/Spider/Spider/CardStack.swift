@@ -11,7 +11,7 @@ class CardStack: UIView {
     
     // MARK: - Properties
     
-    var cards: [Card] = []
+    internal var cards: [Card] = []
     var stackIndex: Int
     
     // Visual indicator for empty stacks
@@ -42,39 +42,24 @@ class CardStack: UIView {
     }
     
     private func setupEmptyIndicator() {
-        emptyIndicator = UIView(frame: CGRect(x: 0, y: 0, width: GameConfig.cardWidth, height: GameConfig.cardHeight))
-        emptyIndicator.backgroundColor = UIColor.white.withAlphaComponent(0.1)
-        emptyIndicator.layer.cornerRadius = 12.0
+        emptyIndicator = UIView(frame: CGRect(x: 0, y: 0, width: bounds.width, height: GameConfig.cardHeight))
+        emptyIndicator.backgroundColor = UIColor.white.withAlphaComponent(0.05)
+        emptyIndicator.layer.cornerRadius = 8
+        emptyIndicator.layer.borderWidth = 1
+        emptyIndicator.layer.borderColor = UIColor.white.withAlphaComponent(0.2).cgColor
         
-        // Create dashed border with a shape layer instead
-        let borderLayer = CAShapeLayer()
-        borderLayer.strokeColor = UIColor.white.withAlphaComponent(0.7).cgColor
-        borderLayer.lineDashPattern = [NSNumber(value: 5), NSNumber(value: 5)]
-        borderLayer.lineWidth = 2.0
-        borderLayer.frame = emptyIndicator.bounds
-        borderLayer.fillColor = nil
-        borderLayer.path = UIBezierPath(roundedRect: emptyIndicator.bounds, cornerRadius: 12.0).cgPath
-        emptyIndicator.layer.addSublayer(borderLayer)
+        // Plus icon and text
+        let plusLabel = UILabel(frame: emptyIndicator.bounds)
+        plusLabel.text = "+"
+        plusLabel.textColor = UIColor.white.withAlphaComponent(0.4)
+        plusLabel.font = UIFont.systemFont(ofSize: 24, weight: .light)
+        plusLabel.textAlignment = .center
+        emptyIndicator.addSubview(plusLabel)
         
-        // Add placeholder text
-        let placeholderLabel = UILabel(frame: emptyIndicator.bounds)
-        placeholderLabel.text = "+"
-        placeholderLabel.textColor = UIColor.white.withAlphaComponent(0.8)
-        placeholderLabel.textAlignment = .center
-        placeholderLabel.font = UIFont.systemFont(ofSize: 35, weight: .light)
-        emptyIndicator.addSubview(placeholderLabel)
-        
-        // Add subtle pulsating animation
-        let pulseAnimation = CABasicAnimation(keyPath: "opacity")
-        pulseAnimation.duration = 1.5
-        pulseAnimation.fromValue = 0.6
-        pulseAnimation.toValue = 1.0
-        pulseAnimation.autoreverses = true
-        pulseAnimation.repeatCount = Float.infinity
-        placeholderLabel.layer.add(pulseAnimation, forKey: "pulse")
+        // Hide initially if we have cards
+        emptyIndicator.isHidden = !cards.isEmpty
         
         addSubview(emptyIndicator)
-        emptyIndicator.isHidden = true
     }
     
     // MARK: - Card Management
@@ -109,31 +94,36 @@ class CardStack: UIView {
         repositionCards()
     }
     
-    func addCards(_ newCards: [Card], animated: Bool) {
-        cards.append(contentsOf: newCards)
+    func addCards(_ newCards: [Card], animated: Bool = false) {
+        // Kartları yığına ekle
+        for newCard in newCards {
+            addCard(newCard)
+        }
         
+        // Animasyonlu ekleme istenirse
         if animated {
-            // Animate cards into place
-            for (index, card) in newCards.enumerated() {
-                // Add with slight delay between cards
-                let delay = Double(index) * 0.05
-                
-                // Set initial position
-                let targetY = CGFloat(cards.count - newCards.count + index) * GameConfig.cardOverlap
-                card.frame.origin.y = targetY - 20
-                addSubview(card)
-                
-                // Animate to final position
-                UIView.animate(withDuration: GameConfig.moveAnimationDuration, delay: delay, options: .curveEaseOut) {
-                    card.frame.origin.y = targetY
-                }
-            }
+            // İlk kart için pozisyon belirle
+            let startY = cards.count > newCards.count ? 
+                CGFloat(cards.count - newCards.count) * GameConfig.cardOverlap : 0
             
-            // Final repositioning after all animations
-            DispatchQueue.main.asyncAfter(deadline: .now() + Double(newCards.count) * 0.05 + GameConfig.moveAnimationDuration) {
-                self.repositionCards()
+            for (index, card) in newCards.enumerated() {
+                let finalY = startY + CGFloat(index) * GameConfig.cardOverlap
+                
+                // Başlangıçta kartın eklenmesi ve efektle animasyon
+                card.alpha = 0.7
+                card.transform = CGAffineTransform(scaleX: 1.05, y: 1.05)
+                
+                UIView.animate(withDuration: 0.2, delay: 0.03 * Double(index), options: .curveEaseOut, animations: {
+                    card.alpha = 1.0
+                    card.transform = .identity
+                    card.frame.origin.y = finalY
+                }, completion: nil)
+                
+                // Kartı öne getir
+                bringSubviewToFront(card)
             }
         } else {
+            // Animasyonsuz düzenleme
             repositionCards()
         }
     }
@@ -157,7 +147,10 @@ class CardStack: UIView {
         // Show or hide empty indicator
         emptyIndicator.isHidden = !cards.isEmpty
         
-        print("Yığın #\(stackIndex): \(cards.count) kart yeniden konumlandırılıyor")
+        // Tüm kartları kaldıralım ve sonra yeniden ekleyelim
+        for card in cards {
+            card.removeFromSuperview()
+        }
         
         for (index, card) in cards.enumerated() {
             // Calculate position
@@ -165,25 +158,18 @@ class CardStack: UIView {
             let targetFrame = CGRect(
                 x: 0,
                 y: yOffset,
-                width: GameConfig.cardWidth,
+                width: min(frame.width, GameConfig.cardWidth),
                 height: GameConfig.cardHeight
             )
             
-            // Add card if not already added
-            if card.superview != self {
-                card.frame = targetFrame
-                addSubview(card)
-                print("Kart eklendi: \(card.value) \(card.suit), pozisyon: \(targetFrame)")
-            } else {
-                // Animate to new position if already on the stack
-                UIView.animate(withDuration: GameConfig.moveAnimationDuration) {
-                    card.frame = targetFrame
-                }
-                print("Kart pozisyonu güncellendi: \(card.value) \(card.suit), pozisyon: \(targetFrame)")
-            }
+            // Kartı direkt olarak doğru pozisyonda ekleyelim
+            card.frame = targetFrame
+            addSubview(card)
             
-            // Bring to front in proper order
-            bringSubviewToFront(card)
+            // Son kart görünür, sürüklemede önemli
+            if index == cards.count - 1 {
+                bringSubviewToFront(card)
+            }
         }
     }
     
@@ -206,160 +192,190 @@ class CardStack: UIView {
     }
     
     // Check if a sequence of cards can be added to this stack
-    func canAcceptCards(_ cardsToAdd: [Card]) -> Bool {
-        guard !cardsToAdd.isEmpty else { return false }
-        
-        // If stack is empty, any sequence is valid
+    func canAcceptCards(_ draggedCards: [Card]) -> Bool {
+        // Boş ise herhangi bir kartı (başlangıç olarak K veya herhangi bir kart) kabul et
         if cards.isEmpty {
+            // Boş bir yığın istediğimiz herhangi bir değeri kabul edebilir
             return true
         }
         
-        // Check if first card in sequence can be added to top card
-        if let topCard = cards.last {
-            if topCard.isRevealed {
-                return cardsToAdd.first!.canStackOnTop(of: topCard)
-            }
+        // Sadece sürüklenebilir kartları kabul et
+        guard let draggedTopCard = draggedCards.first, draggedTopCard.isDraggable else {
+            return false
         }
         
-        return false
+        // Üstteki kartı al
+        guard let topCard = cards.last else {
+            return true
+        }
+        
+        // Üstteki kart açık değilse sürükleme yapılamaz
+        guard topCard.isRevealed else {
+            return false
+        }
+        
+        // Kart değerleri ve takımlar kontrol edilir
+        // Spider Solitaire kuralı: Daha büyük değer üzerine sadece bir küçük değer gelebilir
+        let topCardIndex = GameConfig.cardValues.firstIndex(of: topCard.value) ?? 0
+        let draggedCardIndex = GameConfig.cardValues.firstIndex(of: draggedTopCard.value) ?? 0
+        
+        // Sürüklenen kart, hedef karttan bir değer küçük olmalıdır
+        // Ör: Hedef kart J ise, sürüklenen kart 10 olmalıdır
+        let correctValue = (topCardIndex == draggedCardIndex + 1)
+        
+        // Zorluk seviyesine göre eşleşme kontrolü
+        switch GameConfig.difficultyLevel {
+        case .easy:
+            // Kolay seviyede sadece değer sırası önemli, takım önemli değil
+            return correctValue
+            
+        case .medium:
+            // Orta seviyede eğer takımlar aynıysa sıra kontrolü yaparız
+            // Farklı takımlarsa, yine değer kontrolü yeterli
+            let sameSuit = topCard.suit == draggedTopCard.suit
+            return correctValue && (sameSuit || !GameConfig.requireSameSuitForMedium)
+            
+        case .hard:
+            // Zor seviyede sadece aynı takımdan kartlar kabul edilir
+            let sameSuit = topCard.suit == draggedTopCard.suit
+            return correctValue && sameSuit
+        }
     }
     
     // Get all sequences of cards that can be moved
     func getMovableSequences() -> [[Card]] {
-        guard !cards.isEmpty else { return [] }
+        var movableSequences: [[Card]] = []
         
-        var sequences: [[Card]] = []
-        
-        // All revealed cards can be moved individually
+        // Her karttan başlayarak olası tüm sıraları bul
         for i in 0..<cards.count {
-            if cards[i].isRevealed {
-                // Check for valid sequences starting from this card
-                var currentSequence = [cards[i]]
+            let startCard = cards[i]
+            
+            // Kart açık değilse, atla
+            if !startCard.isRevealed {
+                continue
+            }
+            
+            // Bu karttan başlayan bir sıra olabilir
+            let cardSubset = Array(cards[i...])
+            
+            // Tüm olası sıraları kontrol et
+            for length in 1...cardSubset.count {
+                let possibleSequence = Array(cardSubset.prefix(length))
                 
-                // Add subsequent cards if they form a valid sequence
-                for j in i+1..<cards.count {
-                    currentSequence.append(cards[j])
-                    
-                    // Check if this is a valid sequence
-                    if Card.isValidSequence(cards: currentSequence) {
-                        sequences.append(currentSequence)
-                    }
+                // Bu geçerli bir sıra mı?
+                if isValidSequence(possibleSequence) {
+                    movableSequences.append(possibleSequence)
                 }
             }
         }
         
-        return sequences
+        return movableSequences
     }
     
     // Check for and handle completed sequences (K to A of same suit)
     func checkForCompletedSequences() -> Bool {
-        guard cards.count >= 13 else { return false }
-        
-        // Start checking from the end of the stack
-        var index = cards.count - 13
-        while index >= 0 {
-            let potentialSequence = Array(cards[index..<index+13])
-            
-            // Check if this is a complete sequence
-            if Card.isCompleteSequence(cards: potentialSequence) {
-                // Animate and remove the sequence
-                animateCompletedSequence(startIndex: index)
-                return true
-            }
-            
-            index -= 1
+        // Yığında en az 13 kart olmalı (Tam bir deste oluşturmak için)
+        guard cards.count >= 13 else {
+            return false
         }
         
-        return false
+        // Son 13 kartı kontrol et
+        let startIndex = cards.count - 13
+        let potentialSequence = Array(cards[startIndex...])
+        
+        // Kartlar K'dan A'ya sıralı olmalı
+        let values = Array(GameConfig.cardValues.reversed()) // K, Q, J, ..., A
+        
+        // Sıralamanın doğru olup olmadığını kontrol et
+        for i in 0..<potentialSequence.count {
+            let card = potentialSequence[i]
+            
+            // Kart açık değilse, geçersiz
+            if !card.isRevealed {
+                return false
+            }
+            
+            // Değer doğru mu?
+            if card.value != values[i] {
+                return false
+            }
+            
+            // Tüm kartlar aynı takımdan olmalı
+            if i > 0 && card.suit != potentialSequence[0].suit {
+                return false
+            }
+        }
+        
+        // Sequence tamamlandı, animasyon göster ve kartları kaldır
+        animateCompletedSequence(potentialSequence)
+        return true
     }
     
     // MARK: - Animations
     
     // Animate a completed sequence and remove it
-    private func animateCompletedSequence(startIndex: Int) {
-        let sequenceCards = Array(cards[startIndex..<startIndex+13])
-        
-        // Create a container for the animation
-        completedSequenceContainer = UIView(frame: CGRect(
-            x: 0,
-            y: CGFloat(startIndex) * GameConfig.cardOverlap,
-            width: GameConfig.cardWidth,
-            height: GameConfig.cardHeight + GameConfig.cardOverlap * 12
-        ))
-        addSubview(completedSequenceContainer!)
-        
-        // Add cards to the container
-        for (i, card) in sequenceCards.enumerated() {
-            let cardCopy = Card(value: card.value, suit: card.suit, faceUp: true)
-            cardCopy.isRevealed = true
-            cardCopy.frame = CGRect(
-                x: 0,
-                y: CGFloat(i) * GameConfig.cardOverlap,
-                width: GameConfig.cardWidth,
-                height: GameConfig.cardHeight
-            )
-            completedSequenceContainer!.addSubview(cardCopy)
+    private func animateCompletedSequence(_ completedCards: [Card]) {
+        // Başarı sesi çal
+        if GameConfig.soundEnabled {
+            // Ses burada çalınacak
         }
         
-        // Remove the actual cards from the stack
-        cards.removeSubrange(startIndex..<startIndex+13)
-        
-        // If the stack is not empty and the new top card is not revealed, flip it
-        if startIndex < cards.count && !cards[startIndex].isRevealed {
-            cards[startIndex].flip()
-        }
-        
-        // Repositions the remaining cards
-        repositionCards()
-        
-        // Animate the sequence floating away and fading out
-        UIView.animate(withDuration: GameConfig.completeAnimationDuration, delay: 0.2, options: .curveEaseInOut, animations: {
-            self.completedSequenceContainer?.transform = CGAffineTransform(translationX: 0, y: -100)
-            self.completedSequenceContainer?.alpha = 0
-        }, completion: { _ in
-            self.completedSequenceContainer?.removeFromSuperview()
-            self.completedSequenceContainer = nil
-            
-            // Add sparkle effect
-            self.addSparkleEffect()
-        })
-        
-        // Provide haptic feedback for completion
+        // Başarı haptic feedback
         if GameConfig.hapticFeedbackEnabled {
-            let feedback = UINotificationFeedbackGenerator()
-            feedback.notificationOccurred(.success)
+            let generator = UINotificationFeedbackGenerator()
+            generator.notificationOccurred(.success)
         }
-    }
-    
-    private func addSparkleEffect() {
-        let emojis = ["✨", "🎉", "🌟", "💫", "⭐️"]
         
-        for _ in 0..<15 {
-            let sparkle = UILabel()
-            sparkle.text = emojis.randomElement()
-            sparkle.font = UIFont.systemFont(ofSize: CGFloat.random(in: 15...25))
-            sparkle.textAlignment = .center
-            sparkle.frame = CGRect(
-                x: CGFloat.random(in: -20...GameConfig.cardWidth+20),
-                y: CGFloat.random(in: -20...50),
-                width: 30,
-                height: 30
-            )
-            addSubview(sparkle)
+        // Animation delay
+        var delay: TimeInterval = 0
+        
+        // Önce kartları kopyala (referans için)
+        let originalCards = completedCards
+        
+        // Her kartı animasyonla kaldır
+        for card in originalCards.reversed() {
+            // Kartın pozisyonunu ekran koordinatlarına çevir
+            let cardFrameInSuperview = convert(card.frame, to: superview?.superview)
             
-            // Random animation
-            let destinationY = CGFloat.random(in: -100...(-50))
-            let destinationX = CGFloat.random(in: -50...50)
-            let duration = TimeInterval.random(in: 0.5...1.5)
-            let delay = TimeInterval.random(in: 0...0.3)
+            // Orijinal kopyası oluştur
+            let cardCopy = Card(value: card.value, suit: card.suit, faceUp: true)
+            cardCopy.frame = cardFrameInSuperview
+            cardCopy.isRevealed = true
+            superview?.superview?.addSubview(cardCopy)
             
-            UIView.animate(withDuration: duration, delay: delay, options: .curveEaseOut, animations: {
-                sparkle.transform = CGAffineTransform(translationX: destinationX, y: destinationY)
-                    .rotated(by: CGFloat.random(in: -0.5...0.5))
-                sparkle.alpha = 0
+            // Orijinal kartı gizle ve kaldır
+            card.isHidden = true
+            
+            // Kartın yeni pozisyonu (ekranın alt tarafına)
+            let endY = (superview?.superview?.bounds.height ?? 500) - 100
+            
+            // Animasyonla kart tamamlanan kısma hareket eder
+            UIView.animate(withDuration: 0.5, delay: delay, options: .curveEaseInOut, animations: {
+                cardCopy.center.y = endY
+                cardCopy.transform = CGAffineTransform(scaleX: 0.7, y: 0.7)
             }, completion: { _ in
-                sparkle.removeFromSuperview()
+                // Animasyon bitince kartı kaldır
+                cardCopy.removeFromSuperview()
+                
+                // Orijinal kartı yığından kaldır
+                if let index = self.cards.firstIndex(of: card) {
+                    self.cards.remove(at: index)
+                    card.removeFromSuperview()
+                }
+                
+                // Tüm kartlar kaldırıldığında en üstteki kartı aç
+                if delay == 0.4 * 12 {
+                    // Yeni en üstteki kartı göster
+                    self.repositionCards()
+                    
+                    // Son kartı aç
+                    if let lastCard = self.cards.last, !lastCard.isRevealed {
+                        lastCard.flip()
+                    }
+                }
             })
+            
+            delay += 0.04
         }
     }
     
@@ -376,31 +392,29 @@ class CardStack: UIView {
     
     // Find the card at a specific point
     func cardAt(point: CGPoint) -> Card? {
-        // Convert the point to local coordinates if needed
+        // Pozisyonu kendi koordinat sistemimize çevirelim
         let localPoint = convert(point, from: superview)
         
-        // Search from top to bottom (reversed order) to find the top-most card at this point
-        for card in cards.reversed() {
-            if card.frame.contains(localPoint) {
-                // Adjust for card overlap - need to check if we're actually touching this card
-                let cardLocalPoint = convert(localPoint, to: card)
-                
-                // Only allow dragging by the visible portion of the card
-                // For any card except the last one, we only want to allow dragging by the visible part
-                if let index = cards.firstIndex(of: card), index < cards.count - 1 {
-                    let nextCard = cards[index + 1]
-                    let visibleHeight = nextCard.frame.minY - card.frame.minY
-                    
-                    // Only return this card if the point is within the visible area
-                    if cardLocalPoint.y <= visibleHeight {
-                        return card
-                    }
-                } else {
-                    // This is the last card, so the entire card is visible
-                    return card
-                }
+        // Kartları sondan başa doğru kontrol et (üstte olan kartlar önce işlensin)
+        for i in stride(from: cards.count - 1, through: 0, by: -1) {
+            let card = cards[i]
+            
+            // Eğer pozisyon kartın sınırları içindeyse ve kart açıksa
+            let cardFrame = card.frame
+            
+            // Dokunma alanını biraz genişlet
+            let expandedFrame = CGRect(
+                x: cardFrame.minX - 5,
+                y: cardFrame.minY - 5,
+                width: cardFrame.width + 10,
+                height: cardFrame.height + 10
+            )
+            
+            if expandedFrame.contains(localPoint) && card.isRevealed {
+                return card
             }
         }
+        
         return nil
     }
     
@@ -410,10 +424,35 @@ class CardStack: UIView {
     }
     
     // Get all cards from a specific card to the end of the stack
-    func cardsFromCard(_ card: Card) -> [Card]? {
-        if let index = cards.firstIndex(of: card) {
-            return Array(cards[index...])
+    func cardsFromCard(_ startCard: Card) -> [Card]? {
+        // Başlangıç kartının indexini bul
+        guard let index = indexOf(card: startCard) else {
+            return nil
         }
+        
+        // Başlangıç kartı açık değilse, geçersiz
+        guard startCard.isRevealed else {
+            return nil
+        }
+        
+        // Bu karttan sonra gelen tüm kartları al
+        let startCards = Array(cards[index...])
+        
+        // Sıralı bir dizi mi kontrol et
+        if isValidSequence(startCards) {
+            // Sıralamanın doğru olduğunu belirtmek için haptic feedback
+            if GameConfig.hapticFeedbackEnabled {
+                let generator = UIImpactFeedbackGenerator(style: .light)
+                generator.impactOccurred()
+            }
+            return startCards
+        }
+        
+        // Sıralanmamış kartlarda, sadece tek bir kartı taşımaya izin ver
+        if index == cards.count - 1 {
+            return [startCard]
+        }
+        
         return nil
     }
     
@@ -424,5 +463,67 @@ class CardStack: UIView {
         
         let potentialSet = Array(cards[index...index+12])
         return Card.isCompleteSequence(cards: potentialSet)
+    }
+    
+    func isValidSequence(_ cardsToCheck: [Card]) -> Bool {
+        // En az bir kart olmalı
+        guard !cardsToCheck.isEmpty else {
+            return false
+        }
+        
+        // Tek kart her zaman geçerli bir dizi
+        if cardsToCheck.count == 1 {
+            return true
+        }
+        
+        // Ardışık kartlar için kontrol
+        for i in 0..<cardsToCheck.count-1 {
+            let currentCard = cardsToCheck[i]
+            let nextCard = cardsToCheck[i+1]
+            
+            // Kart değerlerinin indekslerini bul
+            guard let currentIndex = GameConfig.cardValues.firstIndex(of: currentCard.value),
+                  let nextIndex = GameConfig.cardValues.firstIndex(of: nextCard.value) else {
+                return false
+            }
+            
+            // Sonraki kart bir küçük değere sahip olmalı
+            if nextIndex != currentIndex - 1 {
+                return false
+            }
+            
+            // Zorluğa göre takım kontrolü
+            switch GameConfig.difficultyLevel {
+            case .easy:
+                // Kolay seviyede takım kontrolü yapma
+                continue
+                
+            case .medium:
+                // Orta seviyede, eğer sıkı kural isteniyorsa takım kontrolü yap
+                if GameConfig.requireSameSuitForMedium && currentCard.suit != nextCard.suit {
+                    return false
+                }
+                
+            case .hard:
+                // Zor seviyede takımlar aynı olmalı
+                if currentCard.suit != nextCard.suit {
+                    return false
+                }
+            }
+        }
+        
+        return true
+    }
+    
+    func highlightValidDropTarget() {
+        // Kartların bırakılabileceği bir hedef olarak vurgula
+        layer.borderWidth = 2.0
+        layer.borderColor = UIColor.systemGreen.cgColor
+        
+        // Kısa bir süre sonra vurgulamayı kaldır
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.layer.borderWidth = 0.5
+            self.layer.borderColor = UIColor.white.withAlphaComponent(0.3).cgColor
+        }
     }
 } 
