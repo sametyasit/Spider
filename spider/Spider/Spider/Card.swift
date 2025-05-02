@@ -506,4 +506,13 @@ class Card: UIView {
             faceUp: isRevealed
         )
     }
+    
+    // Tuple'dan Card oluşturmak için static yardımcı metod
+    static func createFromTuple(tuple: (value: String, suit: String, isRevealed: Bool)) -> Card {
+        return Card(
+            value: tuple.value,
+            suit: tuple.suit,
+            faceUp: tuple.isRevealed
+        )
+    }
 } 
