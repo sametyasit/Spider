@@ -302,7 +302,7 @@ class GameConfig {
         }
         
         // Load saved game
-        func loadSavedGame() -> (score: Int, moves: Int, elapsedTime: TimeInterval, difficultyLevel: DifficultyLevel, completedSetCount: Int, cards: [[[String: Any]]], stockPileCount: Int, seed: Int?, isChallenge: Bool)? {
+        func loadSavedGame() -> (score: Int, moves: Int, elapsedTime: TimeInterval, difficultyLevel: DifficultyLevel, completedSetCount: Int, cards: [[(value: String, suit: String, isRevealed: Bool)]], stockPileCount: Int, seed: Int?, isChallenge: Bool)? {
             
             guard hasSavedGame() else { return nil }
             
@@ -320,13 +320,30 @@ class GameConfig {
                 difficultyLevel = loadedDifficulty
             }
             
-            // Kart durumlarını yükle
-            let cards = UserDefaults.standard.array(forKey: "savedGameStacks") as? [[[String: Any]]] ?? []
+            // Kart durumlarını yükle ve tuple'lara dönüştür
+            let cardsDict = UserDefaults.standard.array(forKey: "savedGameStacks") as? [[[String: Any]]] ?? []
+            
+            // Dictionary'leri tuple'lara dönüştür
+            var cardTuples = [[(value: String, suit: String, isRevealed: Bool)]]()
+            
+            for stackDict in cardsDict {
+                var stackTuples = [(value: String, suit: String, isRevealed: Bool)]()
+                
+                for cardDict in stackDict {
+                    if let value = cardDict["value"] as? String,
+                       let suit = cardDict["suit"] as? String,
+                       let isRevealed = cardDict["isRevealed"] as? Bool {
+                        stackTuples.append((value: value, suit: suit, isRevealed: isRevealed))
+                    }
+                }
+                
+                cardTuples.append(stackTuples)
+            }
             
             // Seed değerini yükle (opsiyonel)
             let seed: Int? = UserDefaults.standard.object(forKey: "savedGameSeed") as? Int
             
-            return (score, moves, elapsedTime, difficultyLevel, completedSetCount, cards, stockPileCount, seed, isChallenge)
+            return (score, moves, elapsedTime, difficultyLevel, completedSetCount, cardTuples, stockPileCount, seed, isChallenge)
         }
         
         // Clear saved game
