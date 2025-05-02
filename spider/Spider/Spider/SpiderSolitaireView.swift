@@ -860,12 +860,8 @@ class SpiderSolitaireView: UIView {
             let stackCards = savedGame.cards[stackIndex]
             
             for cardTuple in stackCards {
-                // Create card directly from tuple values
-                let card = Card(
-                    value: cardTuple.value,
-                    suit: cardTuple.suit,
-                    faceUp: cardTuple.isRevealed
-                )
+                // Use Card.createFromTuple or initialize directly with tuple values
+                let card = Card.createFromTuple(tuple: cardTuple)
                 stacks[stackIndex].addCard(card)
             }
         }
