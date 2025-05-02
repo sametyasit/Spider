@@ -157,25 +157,29 @@ class CardStack: UIView {
         // Show or hide empty indicator
         emptyIndicator.isHidden = !cards.isEmpty
         
+        print("Yığın #\(stackIndex): \(cards.count) kart yeniden konumlandırılıyor")
+        
         for (index, card) in cards.enumerated() {
             // Calculate position
             let yOffset = index > 0 ? CGFloat(index) * GameConfig.cardOverlap : 0
             let targetFrame = CGRect(
                 x: 0,
                 y: yOffset,
-                width: card.frame.width,
-                height: card.frame.height
+                width: GameConfig.cardWidth,
+                height: GameConfig.cardHeight
             )
             
             // Add card if not already added
             if card.superview != self {
                 card.frame = targetFrame
                 addSubview(card)
+                print("Kart eklendi: \(card.value) \(card.suit), pozisyon: \(targetFrame)")
             } else {
                 // Animate to new position if already on the stack
                 UIView.animate(withDuration: GameConfig.moveAnimationDuration) {
                     card.frame = targetFrame
                 }
+                print("Kart pozisyonu güncellendi: \(card.value) \(card.suit), pozisyon: \(targetFrame)")
             }
             
             // Bring to front in proper order
@@ -372,9 +376,29 @@ class CardStack: UIView {
     
     // Find the card at a specific point
     func cardAt(point: CGPoint) -> Card? {
+        // Convert the point to local coordinates if needed
+        let localPoint = convert(point, from: superview)
+        
+        // Search from top to bottom (reversed order) to find the top-most card at this point
         for card in cards.reversed() {
-            if card.frame.contains(point) {
-                return card
+            if card.frame.contains(localPoint) {
+                // Adjust for card overlap - need to check if we're actually touching this card
+                let cardLocalPoint = convert(localPoint, to: card)
+                
+                // Only allow dragging by the visible portion of the card
+                // For any card except the last one, we only want to allow dragging by the visible part
+                if let index = cards.firstIndex(of: card), index < cards.count - 1 {
+                    let nextCard = cards[index + 1]
+                    let visibleHeight = nextCard.frame.minY - card.frame.minY
+                    
+                    // Only return this card if the point is within the visible area
+                    if cardLocalPoint.y <= visibleHeight {
+                        return card
+                    }
+                } else {
+                    // This is the last card, so the entire card is visible
+                    return card
+                }
             }
         }
         return nil
