@@ -10,7 +10,7 @@ import UIKit
 class DailyChallengeViewController: UIViewController, UICollectionViewDataSource, UICollectionViewDelegate {
     
     private var calendarView: UICollectionView!
-    private var challenges: [DailyChallenge] = []
+    private var challenges: [GameConfig.DailyChallenge] = []
     private var monthLabel: UILabel!
     private var closeButton: UIButton!
     
@@ -131,7 +131,7 @@ class DailyChallengeViewController: UIViewController, UICollectionViewDataSource
     }
     
     private func loadChallenges() {
-        challenges = DailyChallenge.forCurrentMonth()
+        challenges = GameConfig.DailyChallenge.forCurrentMonth()
         
         // Calculate first weekday offset
         addEmptyCellsForMonthStart()
@@ -156,11 +156,12 @@ class DailyChallengeViewController: UIViewController, UICollectionViewDataSource
             
             // Add empty challenges for the weekdays before the first of the month
             for _ in 0..<(adjustedWeekday - 1) {
-                let emptyChallenge = DailyChallenge(
-                    date: Date.distantPast,
-                    seed: 0,
+                let emptyChallenge = GameConfig.DailyChallenge(
+                    id: 0,
+                    name: "Empty",
                     difficulty: .easy,
-                    name: "Empty"
+                    seed: 0,
+                    date: Date.distantPast
                 )
                 challenges.insert(emptyChallenge, at: 0)
             }
@@ -172,7 +173,7 @@ class DailyChallengeViewController: UIViewController, UICollectionViewDataSource
     }
     
     @objc private func startTodaysChallenge() {
-        let todayChallenge = DailyChallenge.forToday()
+        let todayChallenge = GameConfig.DailyChallenge.forToday()
         dismiss(animated: true) {
             // Notify the game view to start today's challenge
             if let sceneDelegate = UIApplication.shared.connectedScenes.first?.delegate as? SceneDelegate,
@@ -194,7 +195,7 @@ class DailyChallengeViewController: UIViewController, UICollectionViewDataSource
         let challenge = challenges[indexPath.item]
         
         // Check if this is an empty cell (padding at start of month)
-        if challenge.date == Date.distantPast {
+        if challenge.id == 0 && challenge.name == "Empty" {
             cell.configure(day: "", difficulty: nil, isCompleted: false, isToday: false, isEmpty: true)
             return cell
         }
@@ -228,7 +229,11 @@ class DailyChallengeViewController: UIViewController, UICollectionViewDataSource
         let challenge = challenges[indexPath.item]
         
         // Don't allow selection of empty cells or future dates
-        if challenge.date == Date.distantPast || challenge.date > Date() {
+        if challenge.id == 0 && challenge.name == "Empty" {
+            return
+        }
+        
+        if challenge.date > Date() {
             return
         }
         
@@ -290,7 +295,7 @@ class ChallengeCell: UICollectionViewCell {
         contentView.addSubview(difficultyIndicator)
     }
     
-    func configure(day: String, difficulty: DifficultyLevel?, isCompleted: Bool, isToday: Bool, isEmpty: Bool, isFuture: Bool = false) {
+    func configure(day: String, difficulty: GameConfig.DifficultyLevel?, isCompleted: Bool, isToday: Bool, isEmpty: Bool, isFuture: Bool = false) {
         dayLabel.text = day
         
         // Empty cell styling
