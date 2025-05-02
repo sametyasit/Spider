@@ -331,6 +331,8 @@ class SpiderSolitaireView: UIView {
         stacks.forEach { $0.removeFromSuperview() }
         stacks.removeAll()
         
+        print("Kart yığınları kuruluyor...")
+        
         // Calculate layout for portrait mode
         let stackWidth = GameConfig.cardWidth
         let stacksPerRow = 5 // Display 5 stacks per row
@@ -339,7 +341,10 @@ class SpiderSolitaireView: UIView {
         // Calculate the total width of stacks in a row
         let totalRowWidth = CGFloat(stacksPerRow) * stackWidth + CGFloat(stacksPerRow - 1) * stackSpacing
         let startX = (bounds.width - totalRowWidth) / 2
-        let startY = toolbar.frame.maxY + toolbar.frame.height + GameConfig.verticalMargin
+        let startY = toolbar.frame.maxY + 40 // Daha yüksek başlangıç noktası
+        
+        print("Ekran boyutları: \(bounds.width) x \(bounds.height)")
+        print("Yığın başlangıç pozisyonu: (\(startX), \(startY))")
         
         // Create new stacks in 2 rows
         for i in 0..<GameConfig.numberOfStacks {
@@ -351,9 +356,17 @@ class SpiderSolitaireView: UIView {
             
             let stackFrame = CGRect(x: x, y: y, width: stackWidth, height: GameConfig.cardHeight)
             let stack = CardStack(stackIndex: i, frame: stackFrame)
+            stack.layer.borderWidth = 1
+            stack.layer.borderColor = UIColor.white.withAlphaComponent(0.3).cgColor
+            stack.layer.cornerRadius = 8
+            
+            print("Yığın #\(i) oluşturuldu, pozisyon: \(stackFrame)")
+            
             stacks.append(stack)
             addSubview(stack)
         }
+        
+        print("Toplam \(stacks.count) yığın kuruldu")
     }
     
     private func setupStockPile() {
@@ -432,8 +445,12 @@ class SpiderSolitaireView: UIView {
         // Reset game state
         resetGame()
         
+        print("Yeni oyun başlatılıyor...")
+        
         // Create and shuffle a deck based on difficulty
         createDeck()
+        
+        print("Deste oluşturuldu, \(deck.count) kart var")
         
         // Deal initial cards
         dealInitialCards()
@@ -512,8 +529,12 @@ class SpiderSolitaireView: UIView {
         // 54 cards in total: 5 face-down cards + 1 face-up card for stacks 0-3
         // 4 face-down cards + 1 face-up card for stacks 4-9
         
+        print("Kartlar dağıtılıyor...")
+        
         for stackIndex in 0..<GameConfig.numberOfStacks {
             let cardsInStack = (stackIndex < 4) ? 6 : 5
+            
+            print("Yığın #\(stackIndex): \(cardsInStack) kart dağıtılıyor")
             
             for cardIndex in 0..<cardsInStack {
                 if let card = deck.popLast() {
@@ -521,14 +542,26 @@ class SpiderSolitaireView: UIView {
                     card.isRevealed = (cardIndex == cardsInStack - 1)
                     
                     // Add to appropriate stack
+                    card.frame = CGRect(x: 0, y: 0, width: GameConfig.cardWidth, height: GameConfig.cardHeight)
                     stacks[stackIndex].addCard(card)
+                    print("Kart dağıtıldı: \(card.value) \(card.suit), isRevealed: \(card.isRevealed)")
+                } else {
+                    print("HATA: Dağıtılacak kart kalmadı!")
                 }
             }
         }
         
         // Remaining cards go to stock
         stockCards = deck
+        deck = []
+        print("Stok kartları: \(stockCards.count) kart")
         updateStockPileUI()
+        
+        // Kartların düzgün yerleştirildiğinden emin olalım
+        for (index, stack) in stacks.enumerated() {
+            print("Yığın #\(index): \(stack.cards.count) kart var")
+            stack.repositionCards()
+        }
     }
     
     private func updateStockPileUI() {
@@ -601,13 +634,19 @@ class SpiderSolitaireView: UIView {
         // Deal one card to each stack, face up
         for stackIndex in 0..<GameConfig.numberOfStacks {
             if let card = stockCards.popLast() {
-                card.isRevealed = true
+                card.isRevealed = true // Cards from stock pile should be face up
                 stacks[stackIndex].addCard(card, animated: true)
             }
         }
         
         // Update stock pile UI
         updateStockPileUI()
+        
+        // Provide haptic feedback
+        if GameConfig.hapticFeedbackEnabled {
+            let feedback = UIImpactFeedbackGenerator(style: .medium)
+            feedback.impactOccurred()
+        }
     }
     
     private func startTimer() {
@@ -1196,8 +1235,13 @@ class SpiderSolitaireView: UIView {
         // Find the card that was tapped
         for stack in stacks {
             if let card = stack.cardAt(point: location) {
+                // Make sure card is face up
+                if !card.isRevealed {
+                    return
+                }
+                
                 // Check if the card is part of a valid sequence
-                if let cardsToMove = stack.cardsFromCard(card), Card.isValidSequence(cards: cardsToMove) {
+                if let cardsToMove = stack.cardsFromCard(card) {
                     // Start dragging these cards
                     draggingCards = cardsToMove
                     draggingCard = card
@@ -1211,7 +1255,15 @@ class SpiderSolitaireView: UIView {
                     createCardSnapshot(cardsToMove)
                     
                     // Remove cards from stack temporarily
-                    _ = stack.removeCards(from: stack.indexOf(card: card)!)
+                    if let cardIndex = stack.indexOf(card: card) {
+                        _ = stack.removeCards(from: cardIndex)
+                    }
+                    
+                    // Apply haptic feedback when starting to drag
+                    if GameConfig.hapticFeedbackEnabled {
+                        let impact = UIImpactFeedbackGenerator(style: .light)
+                        impact.impactOccurred()
+                    }
                     
                     // Update UI
                     bringSubviewToFront(cardSnapshot!)
@@ -1227,11 +1279,24 @@ class SpiderSolitaireView: UIView {
         cardSnapshot = UIView(frame: CGRect(x: 0, y: 0, width: GameConfig.cardWidth, height: snapHeight))
         cardSnapshot?.backgroundColor = .clear
         
+        // Get current position of first card
+        if let firstCard = cards.first, let originStack = dragOriginStack {
+            let firstCardFrame = originStack.convert(firstCard.frame, to: self)
+            cardSnapshot?.frame.origin = firstCardFrame.origin
+        }
+        
         // Add each card to the snapshot
         for (index, card) in cards.enumerated() {
             let cardCopy = Card(value: card.value, suit: card.suit, faceUp: true)
+            cardCopy.isRevealed = true
             cardCopy.frame.origin.y = CGFloat(index) * GameConfig.cardOverlap
             cardSnapshot?.addSubview(cardCopy)
+            
+            // Add subtle shadow effect to make dragged cards stand out
+            cardCopy.layer.shadowColor = UIColor.black.cgColor
+            cardCopy.layer.shadowOffset = CGSize(width: 0, height: 2)
+            cardCopy.layer.shadowRadius = 3
+            cardCopy.layer.shadowOpacity = 0.3
         }
         
         addSubview(cardSnapshot!)
@@ -1251,30 +1316,57 @@ class SpiderSolitaireView: UIView {
         
         // Find stack under the drop location
         var targetStack: CardStack?
+        var targetFound = false
         
         for stack in stacks {
+            // Use converted frame for proper hit testing
             let stackFrame = stack.convert(stack.bounds, to: self)
-            if stackFrame.contains(location) {
+            
+            // Expand the hit testing area slightly to make it easier to drop cards
+            let expandedFrame = stackFrame.insetBy(dx: -20, dy: -20)
+            
+            if expandedFrame.contains(location) {
                 targetStack = stack
+                targetFound = true
                 break
             }
         }
         
-        // Check if we can place the cards in the target stack
-        if let targetStack = targetStack, targetStack.canAcceptCards(cards) {
-            // Add the cards to the target stack
-            targetStack.addCards(cards, animated: true)
-            
-            // Increment move count
-            moves += 1
-            
-            // Check for completed sets
-            checkForCompletedSets()
-            
-            // Update UI
-            updateLabels()
+        // Either place cards in target stack if valid move, or return to origin stack
+        if targetFound, let targetStack = targetStack {
+            if targetStack.canAcceptCards(cards) {
+                // Success haptic feedback
+                if GameConfig.hapticFeedbackEnabled {
+                    let feedback = UIImpactFeedbackGenerator(style: .medium)
+                    feedback.impactOccurred()
+                }
+                
+                // Add the cards to the target stack
+                targetStack.addCards(cards, animated: true)
+                
+                // Increment move count
+                moves += 1
+                
+                // Check for completed sets
+                checkForCompletedSets()
+                
+                // Update UI
+                updateLabels()
+                
+                // Save game state after each move
+                saveCurrentGame()
+            } else {
+                // Not a valid move - error haptic feedback  
+                if GameConfig.hapticFeedbackEnabled {
+                    let feedback = UINotificationFeedbackGenerator()
+                    feedback.notificationOccurred(.error)
+                }
+                
+                // Return cards to original stack
+                originStack.addCards(cards, animated: true)
+            }
         } else {
-            // Return cards to original stack
+            // No target stack found, return cards to original stack
             originStack.addCards(cards, animated: true)
         }
         
