@@ -16,14 +16,18 @@ class ViewController: UIViewController {
     
     override func viewDidLoad() {
         super.viewDidLoad()
+        print("ViewController yükleniyor...")
         setupUI()
     }
     
     private func setupUI() {
+        print("Arayüz kurulumu başlıyor...")
+        
         // Create and add the main game view
         spiderView = SpiderSolitaireView(frame: view.bounds)
         spiderView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(spiderView)
+        print("SpiderSolitaireView oluşturuldu ve eklendi")
         
         // Add settings button
         setupSettingsButton()
@@ -33,6 +37,20 @@ class ViewController: UIViewController {
         
         // Add challenge button
         setupChallengeButton()
+        
+        print("Tüm arayüz kurulumu tamamlandı")
+        
+        // Kart görünümünü kontrol edelim
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            print("Görünüm düzeni kontrol ediliyor...")
+            print("Spider view frame: \(self.spiderView.frame)")
+            for (index, stack) in self.spiderView.stacks.enumerated() {
+                print("Yığın #\(index) frame: \(stack.frame), kart sayısı: \(stack.cards.count)")
+                
+                // Kartları yeniden konumlandıralım
+                stack.repositionCards()
+            }
+        }
     }
     
     private func setupSettingsButton() {
