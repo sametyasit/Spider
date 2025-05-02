@@ -16,255 +16,312 @@ class ViewController: UIViewController {
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        print("ViewController yükleniyor...")
         setupUI()
+        
+        // Oyun ayarlarını yükle
+        GameConfig.loadSettings()
+        
+        // Kısa bir gecikme ile yeni oyunu otomatik başlat
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            self.spiderView.startNewGame()
+            
+            // Debug bilgisi yazdır
+            print("Oyun başlatıldı - Zorluk: \(GameConfig.difficultyLevel.rawValue)")
+        }
     }
     
     private func setupUI() {
         print("Arayüz kurulumu başlıyor...")
         
-        // Create and add the main game view
+        // Oyun görünümünü oluştur ve ekle
         spiderView = SpiderSolitaireView(frame: view.bounds)
         spiderView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        
+        // Arka plan rengini ayarla - tema rengine göre
+        let theme = GameConfig.themes[GameConfig.currentTheme] ?? GameConfig.themes["Klasik"]!
+        view.backgroundColor = theme.background
+        
         view.addSubview(spiderView)
         print("SpiderSolitaireView oluşturuldu ve eklendi")
         
-        // Add settings button
+        // Ayarlar düğmesini ayarla
         setupSettingsButton()
         
-        // Add theme button
+        // Tema düğmesini ayarla
         setupThemeButton()
         
-        // Add challenge button
+        // Meydan okuma düğmesini ayarla (opsiyonel)
         setupChallengeButton()
-        
-        print("Tüm arayüz kurulumu tamamlandı")
-        
-        // Kart görünümünü kontrol edelim
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            print("Görünüm düzeni kontrol ediliyor...")
-            print("Spider view frame: \(self.spiderView.frame)")
-            for (index, stack) in self.spiderView.stacks.enumerated() {
-                print("Yığın #\(index) frame: \(stack.frame), kart sayısı: \(stack.cards.count)")
-                
-                // Kartları yeniden konumlandıralım
-                stack.repositionCards()
-            }
-        }
     }
     
     private func setupSettingsButton() {
+        // Ayarlar düğmesi - sağ üst köşede
         settingsButton = UIButton(type: .system)
         settingsButton.setImage(UIImage(systemName: "gear"), for: .normal)
         settingsButton.tintColor = .white
-        settingsButton.backgroundColor = UIColor.black.withAlphaComponent(0.4)
+        settingsButton.backgroundColor = UIColor.black.withAlphaComponent(0.5)
         settingsButton.layer.cornerRadius = 20
-        settingsButton.frame = CGRect(x: view.bounds.width - 50, y: view.safeAreaInsets.top + 10, width: 40, height: 40)
+        
+        // Şık görgü ve stil
+        settingsButton.frame = CGRect(x: view.bounds.width - 50, y: 40, width: 40, height: 40)
         settingsButton.autoresizingMask = [.flexibleLeftMargin, .flexibleBottomMargin]
-        settingsButton.addTarget(self, action: #selector(showSettings), for: .touchUpInside)
+        
+        // Gölge ekle
+        settingsButton.layer.shadowColor = UIColor.black.cgColor
+        settingsButton.layer.shadowOffset = CGSize(width: 0, height: 2)
+        settingsButton.layer.shadowOpacity = 0.3
+        settingsButton.layer.shadowRadius = 3
+        
+        // Tıklama efekti ekle
+        settingsButton.addTarget(self, action: #selector(buttonTouchDown(_:)), for: .touchDown)
+        settingsButton.addTarget(self, action: #selector(buttonTouchUp(_:)), for: [.touchUpInside, .touchUpOutside, .touchCancel])
+        
+        // Ayarlar menüsünü gösterme işlemi
+        settingsButton.addTarget(self, action: #selector(showSettingsMenu), for: .touchUpInside)
+        
         view.addSubview(settingsButton)
     }
     
-    private func setupThemeButton() {
-        themeButton = UIButton(type: .system)
-        themeButton.setImage(UIImage(systemName: "paintbrush"), for: .normal)
-        themeButton.tintColor = .white
-        themeButton.backgroundColor = UIColor.black.withAlphaComponent(0.4)
-        themeButton.layer.cornerRadius = 20
-        themeButton.frame = CGRect(x: view.bounds.width - 100, y: view.safeAreaInsets.top + 10, width: 40, height: 40)
-        themeButton.autoresizingMask = [.flexibleLeftMargin, .flexibleBottomMargin]
-        themeButton.addTarget(self, action: #selector(showThemeSelector), for: .touchUpInside)
-        view.addSubview(themeButton)
-    }
-    
-    private func setupChallengeButton() {
-        challengeButton = UIButton(type: .system)
-        challengeButton.setImage(UIImage(systemName: "calendar"), for: .normal)
-        challengeButton.tintColor = .white
-        challengeButton.backgroundColor = UIColor.black.withAlphaComponent(0.4)
-        challengeButton.layer.cornerRadius = 20
-        challengeButton.frame = CGRect(x: view.bounds.width - 150, y: view.safeAreaInsets.top + 10, width: 40, height: 40)
-        challengeButton.autoresizingMask = [.flexibleLeftMargin, .flexibleBottomMargin]
-        challengeButton.addTarget(self, action: #selector(showDailyChallenges), for: .touchUpInside)
-        view.addSubview(challengeButton)
-    }
-    
-    @objc private func showSettings() {
-        let settingsVC = UIAlertController(title: "Ayarlar", message: nil, preferredStyle: .actionSheet)
-        
-        // Difficulty settings
-        settingsVC.addAction(UIAlertAction(title: "Zorluk: \(GameConfig.difficultyLevel.description)", style: .default) { _ in
-            self.showDifficultySelector()
-        })
-        
-        // Toggle settings
-        settingsVC.addAction(UIAlertAction(title: GameConfig.showTimer ? "Süreyi Gizle" : "Süreyi Göster", style: .default) { _ in
-            GameConfig.showTimer = !GameConfig.showTimer
-            self.spiderView.updateSettings()
-        })
-        
-        settingsVC.addAction(UIAlertAction(title: GameConfig.showScore ? "Puanı Gizle" : "Puanı Göster", style: .default) { _ in
-            GameConfig.showScore = !GameConfig.showScore
-            self.spiderView.updateSettings()
-        })
-        
-        settingsVC.addAction(UIAlertAction(title: GameConfig.soundEnabled ? "Sesi Kapat" : "Sesi Aç", style: .default) { _ in
-            GameConfig.soundEnabled = !GameConfig.soundEnabled
-        })
-        
-        settingsVC.addAction(UIAlertAction(title: GameConfig.hapticFeedbackEnabled ? "Titreşimi Kapat" : "Titreşimi Aç", style: .default) { _ in
-            GameConfig.hapticFeedbackEnabled = !GameConfig.hapticFeedbackEnabled
-        })
-        
-        settingsVC.addAction(UIAlertAction(title: GameConfig.autoCompleteEnabled ? "Otomatik Tamamlamayı Kapat" : "Otomatik Tamamlamayı Aç", style: .default) { _ in
-            GameConfig.autoCompleteEnabled = !GameConfig.autoCompleteEnabled
-        })
-        
-        // New game action
-        settingsVC.addAction(UIAlertAction(title: "Yeni Oyun", style: .destructive) { _ in
-            self.showNewGameConfirmation()
-        })
-        
-        // Stastics
-        settingsVC.addAction(UIAlertAction(title: "İstatistikler", style: .default) { _ in
-            self.showStatistics()
-        })
-        
-        // Help action
-        settingsVC.addAction(UIAlertAction(title: "Nasıl Oynanır", style: .default) { _ in
-            self.showHowToPlay()
-        })
-        
-        // Cancel action
-        settingsVC.addAction(UIAlertAction(title: "İptal", style: .cancel, handler: nil))
-        
-        // For iPad
-        if let popover = settingsVC.popoverPresentationController {
-            popover.sourceView = settingsButton
-            popover.sourceRect = settingsButton.bounds
+    @objc private func buttonTouchDown(_ sender: UIButton) {
+        UIView.animate(withDuration: 0.1) {
+            sender.transform = CGAffineTransform(scaleX: 0.95, y: 0.95)
+            sender.alpha = 0.9
         }
         
-        present(settingsVC, animated: true)
+        // Dokunsal geri bildirim
+        if GameConfig.hapticFeedbackEnabled {
+            let impact = UIImpactFeedbackGenerator(style: .light)
+            impact.impactOccurred()
+        }
     }
     
-    private func showDifficultySelector() {
-        let difficultyVC = UIAlertController(title: "Zorluk Seviyesi", message: "Bir zorluk seviyesi seçin", preferredStyle: .actionSheet)
+    @objc private func buttonTouchUp(_ sender: UIButton) {
+        UIView.animate(withDuration: 0.1) {
+            sender.transform = .identity
+            sender.alpha = 1.0
+        }
+    }
+    
+    @objc private func showSettingsMenu() {
+        // Ayarlar menüsünü oluştur
+        let alertController = UIAlertController(title: "Ayarlar", message: nil, preferredStyle: .actionSheet)
         
-        difficultyVC.addAction(UIAlertAction(title: "Kolay (1 Takım)", style: .default) { _ in
+        // Zorluk seviyesi seçenekleri
+        alertController.addAction(UIAlertAction(title: "Kolay (Tek Takım)", style: .default) { _ in
             GameConfig.difficultyLevel = .easy
-            self.showNewGameConfirmation()
-        })
-        
-        difficultyVC.addAction(UIAlertAction(title: "Orta (2 Takım)", style: .default) { _ in
-            GameConfig.difficultyLevel = .medium
-            self.showNewGameConfirmation()
-        })
-        
-        difficultyVC.addAction(UIAlertAction(title: "Zor (4 Takım)", style: .default) { _ in
-            GameConfig.difficultyLevel = .hard
-            self.showNewGameConfirmation()
-        })
-        
-        difficultyVC.addAction(UIAlertAction(title: "İptal", style: .cancel, handler: nil))
-        
-        // For iPad
-        if let popover = difficultyVC.popoverPresentationController {
-            popover.sourceView = settingsButton
-            popover.sourceRect = settingsButton.bounds
-        }
-        
-        present(difficultyVC, animated: true)
-    }
-    
-    private func showNewGameConfirmation() {
-        let alert = UIAlertController(
-            title: "Yeni Oyun",
-            message: "Mevcut oyunu sonlandırıp yeni bir oyun başlatmak istediğinize emin misiniz?",
-            preferredStyle: .alert
-        )
-        
-        alert.addAction(UIAlertAction(title: "Hayır", style: .cancel, handler: nil))
-        alert.addAction(UIAlertAction(title: "Evet", style: .destructive) { _ in
+            GameConfig.saveSettings()
             self.spiderView.startNewGame()
         })
         
-        present(alert, animated: true)
+        alertController.addAction(UIAlertAction(title: "Orta (İki Takım)", style: .default) { _ in
+            GameConfig.difficultyLevel = .medium
+            GameConfig.saveSettings()
+            self.spiderView.startNewGame()
+        })
+        
+        alertController.addAction(UIAlertAction(title: "Zor (Dört Takım)", style: .default) { _ in
+            GameConfig.difficultyLevel = .hard
+            GameConfig.saveSettings()
+            self.spiderView.startNewGame()
+        })
+        
+        // Ses ve titreşim ayarları
+        let soundTitle = GameConfig.soundEnabled ? "Sesi Kapat" : "Sesi Aç"
+        alertController.addAction(UIAlertAction(title: soundTitle, style: .default) { _ in
+            GameConfig.soundEnabled.toggle()
+            GameConfig.saveSettings()
+        })
+        
+        let hapticTitle = GameConfig.hapticFeedbackEnabled ? "Titreşimi Kapat" : "Titreşimi Aç"
+        alertController.addAction(UIAlertAction(title: hapticTitle, style: .default) { _ in
+            GameConfig.hapticFeedbackEnabled.toggle()
+            GameConfig.saveSettings()
+        })
+        
+        // Yeni oyun başlatma seçeneği
+        alertController.addAction(UIAlertAction(title: "Yeni Oyun", style: .default) { _ in
+            self.spiderView.startNewGame()
+        })
+        
+        // İptal seçeneği
+        alertController.addAction(UIAlertAction(title: "İptal", style: .cancel, handler: nil))
+        
+        // iPad için popup kaynağı ayarla
+        if let popoverController = alertController.popoverPresentationController {
+            popoverController.sourceView = settingsButton
+            popoverController.sourceRect = settingsButton.bounds
+        }
+        
+        present(alertController, animated: true, completion: nil)
     }
     
-    @objc private func showThemeSelector() {
-        let themeVC = UIAlertController(title: "Tema Seçin", message: nil, preferredStyle: .actionSheet)
+    private func setupThemeButton() {
+        // Tema düğmesi - sol üst köşe
+        themeButton = UIButton(type: .system)
+        themeButton.setImage(UIImage(systemName: "paintpalette"), for: .normal)
+        themeButton.tintColor = .white
+        themeButton.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        themeButton.layer.cornerRadius = 20
         
-        for theme in GameConfig.themes.keys.sorted() {
-            themeVC.addAction(UIAlertAction(title: theme, style: .default) { _ in
-                GameConfig.currentTheme = theme
-                self.spiderView.updateTheme()
+        // Şık görünüm ve stil
+        themeButton.frame = CGRect(x: 10, y: 40, width: 40, height: 40)
+        themeButton.autoresizingMask = [.flexibleRightMargin, .flexibleBottomMargin]
+        
+        // Gölge ekle
+        themeButton.layer.shadowColor = UIColor.black.cgColor
+        themeButton.layer.shadowOffset = CGSize(width: 0, height: 2)
+        themeButton.layer.shadowOpacity = 0.3
+        themeButton.layer.shadowRadius = 3
+        
+        // Tıklama efekti ekle
+        themeButton.addTarget(self, action: #selector(buttonTouchDown(_:)), for: .touchDown)
+        themeButton.addTarget(self, action: #selector(buttonTouchUp(_:)), for: [.touchUpInside, .touchUpOutside, .touchCancel])
+        
+        // Tema menüsünü gösterme işlemi
+        themeButton.addTarget(self, action: #selector(showThemeMenu), for: .touchUpInside)
+        
+        view.addSubview(themeButton)
+    }
+    
+    @objc private func showThemeMenu() {
+        // Tema menüsünü oluştur
+        let alertController = UIAlertController(title: "Tema Seçin", message: nil, preferredStyle: .actionSheet)
+        
+        // Tüm temalar için aksiyon ekle
+        for themeName in GameConfig.themes.keys.sorted() {
+            let isCurrentTheme = themeName == GameConfig.currentTheme
+            let title = isCurrentTheme ? "✓ \(themeName)" : themeName
+            
+            alertController.addAction(UIAlertAction(title: title, style: .default) { _ in
+                GameConfig.currentTheme = themeName
+                GameConfig.saveSettings()
+                
+                // Tema değiştiğinde arka planı güncelle
+                let theme = GameConfig.themes[themeName]!
+                UIView.animate(withDuration: 0.3) {
+                    self.view.backgroundColor = theme.background
+                    self.spiderView.updateTheme()
+                }
             })
         }
         
-        themeVC.addAction(UIAlertAction(title: "İptal", style: .cancel, handler: nil))
+        // İptal seçeneği
+        alertController.addAction(UIAlertAction(title: "İptal", style: .cancel, handler: nil))
         
-        // For iPad
-        if let popover = themeVC.popoverPresentationController {
-            popover.sourceView = themeButton
-            popover.sourceRect = themeButton.bounds
+        // iPad için popup kaynağı ayarla
+        if let popoverController = alertController.popoverPresentationController {
+            popoverController.sourceView = themeButton
+            popoverController.sourceRect = themeButton.bounds
         }
         
-        present(themeVC, animated: true)
+        present(alertController, animated: true, completion: nil)
     }
     
-    @objc private func showDailyChallenges() {
-        let challengeVC = DailyChallengeViewController()
-        challengeVC.modalPresentationStyle = .fullScreen
-        present(challengeVC, animated: true)
+    private func setupChallengeButton() {
+        // Meydan okuma düğmesi - orta üst
+        challengeButton = UIButton(type: .system)
+        challengeButton.setImage(UIImage(systemName: "star.fill"), for: .normal)
+        challengeButton.tintColor = .white
+        challengeButton.backgroundColor = UIColor(red: 1.0, green: 0.76, blue: 0.03, alpha: 0.9)
+        challengeButton.layer.cornerRadius = 20
+        
+        // Şık görünüm ve stil
+        challengeButton.frame = CGRect(x: view.bounds.width / 2 - 20, y: 40, width: 40, height: 40)
+        challengeButton.autoresizingMask = [.flexibleLeftMargin, .flexibleRightMargin, .flexibleBottomMargin]
+        
+        // Gölge ekle
+        challengeButton.layer.shadowColor = UIColor.black.cgColor
+        challengeButton.layer.shadowOffset = CGSize(width: 0, height: 2)
+        challengeButton.layer.shadowOpacity = 0.3
+        challengeButton.layer.shadowRadius = 3
+        
+        // Tıklama efekti ekle
+        challengeButton.addTarget(self, action: #selector(buttonTouchDown(_:)), for: .touchDown)
+        challengeButton.addTarget(self, action: #selector(buttonTouchUp(_:)), for: [.touchUpInside, .touchUpOutside, .touchCancel])
+        
+        // Meydan okuma menüsünü gösterme işlemi
+        challengeButton.addTarget(self, action: #selector(showChallengeMenu), for: .touchUpInside)
+        
+        view.addSubview(challengeButton)
     }
     
-    private func showStatistics() {
-        // Load saved statistics
-        let stats = GameManager.shared.loadStatistics()
+    @objc private func showChallengeMenu() {
+        // Günlük meydan okuma menüsünü oluştur
+        let alertController = UIAlertController(title: "Günlük Meydan Okuma", message: "Özel hazırlanmış zorluklar", preferredStyle: .actionSheet)
         
-        // Format fastest time
-        let fastestTimeMinutes = Int(stats.fastestTime) / 60
-        let fastestTimeSeconds = Int(stats.fastestTime) % 60
-        let timeString = stats.fastestTime > 0 ? String(format: "%02d:%02d", fastestTimeMinutes, fastestTimeSeconds) : "--:--"
+        // Günlük meydan okuma
+        alertController.addAction(UIAlertAction(title: "Bugünün Meydan Okuması", style: .default) { _ in
+            // Bugünün meydan okumasını başlat
+            self.startDailyChallenge()
+        })
         
-        // Daily challenge stats
-        let totalChallenges = UserDefaults.standard.integer(forKey: "total_challenges_completed")
+        // Önceki meydan okumalar
+        alertController.addAction(UIAlertAction(title: "Meydan Okuma Arşivi", style: .default) { _ in
+            // Arşiv ekranını göster
+            self.showChallengeArchive()
+        })
         
-        let alert = UIAlertController(
-            title: "İstatistikler",
-            message: """
-            Toplam Oyunlar: \(stats.gamesPlayed)
-            Kazanılan Oyunlar: \(stats.gamesWon)
-            En Yüksek Puan: \(stats.bestScore)
-            En Hızlı Oyun: \(timeString)
-            
-            Tamamlanan Meydan Okumalar: \(totalChallenges)
-            """,
-            preferredStyle: .alert
+        // İptal seçeneği
+        alertController.addAction(UIAlertAction(title: "İptal", style: .cancel, handler: nil))
+        
+        // iPad için popup kaynağı ayarla
+        if let popoverController = alertController.popoverPresentationController {
+            popoverController.sourceView = challengeButton
+            popoverController.sourceRect = challengeButton.bounds
+        }
+        
+        present(alertController, animated: true, completion: nil)
+    }
+    
+    private func startDailyChallenge() {
+        // Bugünün tarihinden deterministik bir seed oluştur
+        let today = Date()
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.year, .month, .day], from: today)
+        let seed = (components.year ?? 2025) * 10000 + (components.month ?? 1) * 100 + (components.day ?? 1)
+        
+        // Günlük meydan okumanın adını oluştur
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "d MMMM"
+        dateFormatter.locale = Locale(identifier: "tr_TR")
+        let challengeName = "\(dateFormatter.string(from: today))"
+        
+        // Meydan okuma verisini oluştur ve oyunu başlat
+        let challenge = GameConfig.DailyChallenge(
+            id: seed,
+            name: challengeName,
+            difficulty: .medium,
+            seed: seed
         )
         
-        alert.addAction(UIAlertAction(title: "Tamam", style: .default, handler: nil))
+        spiderView.startDailyChallenge(challenge: challenge)
+        
+        // Bildirim göster
+        let alert = UIAlertController(
+            title: "Günlük Meydan Okuma Başladı",
+            message: "\(challengeName) meydan okuması! Bu özel hazırlanmış oyunu tamamlayarak günlük ödül kazanın!",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Tamam", style: .default))
         present(alert, animated: true)
     }
     
-    private func showHowToPlay() {
-        let howToPlayVC = UIAlertController(
-            title: "Nasıl Oynanır",
-            message: """
-            Spider Solitaire, kartları her bir takımda Papazdan Asa doğru sıralayarak oynadığınız bir kart oyunudur.
-            
-            • Kartları aynı takımda azalan sırada yerleştirebilirsiniz (örn. Kız, Vale, 10).
-            • Farklı takımdan kartlar da yerleştirilebilir, ama yalnızca tam bir seri aynı takımda olduğunda tamamlanmış sayılır.
-            • Boş bir sütuna herhangi bir kart yerleştirilebilir.
-            • Tüm kartları sıraladığınızda oyunu kazanırsınız.
-            
-            İpucu: Önce aynı takımdan kartları bir araya getirmeye çalışın.
-            """,
+    private func showChallengeArchive() {
+        // Arşiv ekranı için basit bir alert göster
+        let alert = UIAlertController(
+            title: "Meydan Okuma Arşivi",
+            message: "Bu özellik yakında eklenecek!",
             preferredStyle: .alert
         )
-        
-        howToPlayVC.addAction(UIAlertAction(title: "Anladım", style: .default, handler: nil))
-        present(howToPlayVC, animated: true)
+        alert.addAction(UIAlertAction(title: "Tamam", style: .default))
+        present(alert, animated: true)
+    }
+    
+    // Kartları yeniden konumlandırma yardımcısı
+    func yenidenKonumlandir() {
+        for stack in spiderView.stacks {
+            stack.repositionCards()
+        }
     }
     
     override var prefersStatusBarHidden: Bool {
