@@ -14,7 +14,7 @@ class GameManager {
         var score: Int
         var moves: Int
         var elapsedTime: TimeInterval
-        var difficultyLevel: Int
+        var difficultyLevel: String
         var completedSetCount: Int
         var cardStates: [[CardState]]
         var stockPileCount: Int
@@ -35,7 +35,7 @@ class GameManager {
         score: Int,
         moves: Int,
         elapsedTime: TimeInterval,
-        difficultyLevel: DifficultyLevel,
+        difficultyLevel: GameConfig.DifficultyLevel,
         completedSetCount: Int,
         stacks: [CardStack],
         stockPileCount: Int,
@@ -87,7 +87,7 @@ class GameManager {
         score: Int,
         moves: Int,
         elapsedTime: TimeInterval,
-        difficultyLevel: DifficultyLevel,
+        difficultyLevel: GameConfig.DifficultyLevel,
         completedSetCount: Int,
         cardStates: [[GameState.CardState]],
         stockPileCount: Int,
@@ -103,7 +103,7 @@ class GameManager {
         GameConfig.currentTheme = gameState.currentTheme
         
         // Get the difficulty level
-        let difficultyLevel = DifficultyLevel(rawValue: gameState.difficultyLevel) ?? .easy
+        let difficultyLevel = GameConfig.DifficultyLevel(rawValue: gameState.difficultyLevel) ?? .easy
         
         return (
             gameState.score,
@@ -129,7 +129,7 @@ class GameManager {
         score: Int,
         moves: Int,
         elapsedTime: TimeInterval,
-        difficultyLevel: DifficultyLevel,
+        difficultyLevel: GameConfig.DifficultyLevel,
         completedSetCount: Int,
         stockPileCount: Int,
         seed: Int?,
